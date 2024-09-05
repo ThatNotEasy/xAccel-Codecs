@@ -1,0 +1,622 @@
+{% extends "layout.html" %}
+{% from "bootstrap.html" import panel, form, form_group, input, select, select_group, select_option, selector,
+                                float_group, float_label with context %}
+
+
+{% macro name_option() %}
+  {% call(id, name) form_group(name='name', label='Adapter Name') %}
+    {{ input(id, name, get_json_conf(name), 'required') }}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro server_option() %}
+  {% call(id, name) form_group(name='server_id', label='Server') %}
+    {% call(name) select(id, name, 'required') %}
+      {% for server in get_servers() %}
+        {% if server.adapter_devices %}
+          {{ select_option(server.id, get_json_conf(name), tags=[server.name]) }}
+        {% endif %}
+      {% endfor %}
+    {% endcall %}
+
+    <script>
+        $({{ selector(name) }}).on('change', function () {
+            $({{ selector('device_id') }}).trigger('change');
+        }).trigger('change');
+    </script>
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro device_option() %}
+  {% call(id, name) form_group(name='device_id', label='Device') %}
+    {% call(name) select(id, name, 'required') %}
+      {% call select_group('Available') %}
+        {% for server in get_servers() %}
+          {% for device in server.adapter_devices if device.adapter_id is none %}
+            {{ select_option(device.id, get_json_conf(name), tags=[device.id, device.name], **{'data-server_id': server.id}) }}
+          {% endfor %}
+        {% endfor %}
+      {% endcall %}
+
+      {% call select_group('Used') %}
+        {% for server in get_servers() %}
+          {% for device in server.adapter_devices if device.adapter_id is not none %}
+            {{ select_option(device.id, get_json_conf(name), tags=[device.id, device.name], **{'data-server_id': server.id}) }}
+          {% endfor %}
+        {% endfor %}
+      {% endcall %}
+    {% endcall %}
+
+    <script>
+        $({{ selector(name) }}).on('change', function () {
+            selectpicker_options_toggle.call(this, ['server_id']);
+
+            $({{ selector('ca_number') }}).trigger('change');
+        }).trigger('change');
+    </script>
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro ca_option() %}
+  {% call(id, name) form_group(name='ca_number', label='CA Number') %}
+    {% call(name) select(id, name) %}
+      {% for server in get_servers() %}
+        {% for device in server.adapter_devices %}
+          {% for ca in device.ca %}
+            {{ select_option(ca, get_json_conf(name), label=ca, **{'data-server_id': server.id, 'data-device_id': device.id}) }}
+          {% endfor %}
+        {% endfor %}
+      {% endfor %}
+    {% endcall %}
+
+    <script>
+        $({{ selector(name) }}).on('change', function () {
+            selectpicker_options_toggle.call(this, ['server_id', 'device_id']);
+        }).trigger('change');
+    </script>
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro delivery_system_option() %}
+  {% call(id, name) form_group(name='delivery_system', label='Delivery System') %}
+    {% call(name) select(id, name, default='DVBS2') %}
+      {{ select_option('DVBS', get_json_conf(name), label='DVBS') }}
+      {{ select_option('DVBS2', get_json_conf(name), label='DVBS2') }}
+      {{ select_option('DVBT', get_json_conf(name), label='DVBT') }}
+      {{ select_option('DVBT2', get_json_conf(name), label='DVBT2') }}
+      {{ select_option('DVBC_ANNEX_A', get_json_conf(name), label='DVBC_ANNEX_A') }}
+      {{ select_option('DVBC_ANNEX_B', get_json_conf(name), label='DVBC_ANNEX_B (ATSC-C/QAMB)') }}
+      {{ select_option('ATSC', get_json_conf(name), label='ATSC') }}
+      {{ select_option('ISDBT', get_json_conf(name), label='ISDBT') }}
+    {% endcall %}
+
+    <script>
+        $(function () {
+            $({{ selector(name) }}).on('change', function () {
+                var delivery_system = $(this).val();
+
+                $('.dvb_option').each(function () {
+                    var form_group = $(this).closest('.form-group.row');
+                    var enable = false;
+
+                    if ((delivery_system === 'DVBS' && $(this).hasClass('dvbs_option')) ||
+                        (delivery_system === 'DVBS2' && $(this).hasClass('dvbs2_option')) ||
+                        (delivery_system === 'DVBT' && $(this).hasClass('dvbt_option')) ||
+                        (delivery_system === 'DVBT2' && $(this).hasClass('dvbt2_option')) ||
+                        (delivery_system === 'DVBC_ANNEX_A' && $(this).hasClass('dvbc_annex_a_option')) ||
+                        (delivery_system === 'DVBC_ANNEX_B' && $(this).hasClass('dvbc_annex_b_option')) ||
+                        (delivery_system === 'ATSC' && $(this).hasClass('atsc_option')) ||
+                        (delivery_system === 'ISDBT' && $(this).hasClass('isdbt_option'))) {
+                        enable = true;
+                    }
+
+                    $('.selectpicker, input', form_group).each(function () {
+                        if (enable) {
+                            form_group.slideDown();
+                            $(this).prop('disabled', false);
+                        } else {
+                            form_group.slideUp();
+                            $(this).prop('disabled', true);
+                        }
+
+                        if ($(this).selectpicker) {
+                            $(this).selectpicker('refresh');
+                        }
+
+                        $(this).trigger('change');
+                    });
+                });
+
+                var frequency_unit = $('[name="frequency"]').closest('.form-group').find('.input-group-text');
+
+                frequency_unit.html(['DVBT', 'DVBT2', 'DVBC_ANNEX_A', 'DVBC_ANNEX_B', 'ISDBT'].includes(delivery_system) ? 'MHz' : 'KHz');
+
+                $('[data-toggle="validator"]').validator('update');
+            }).trigger('change');
+        });
+    </script>
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro modulation_option() %}
+  {% call(id, name) form_group(name='modulation', label='Modulation',
+                               class='dvb_option dvbs_option dvbs2_option dvbt_option dvbt2_option '
+                                     'dvbc_annex_a_option dvbc_annex_b_option atsc_option isdbt_option') %}
+    {% call(name) select(id, name, default='auto') %}
+      {{ select_option('auto', get_json_conf(name), label='Auto') }}
+      {{ select_option('qpsk', get_json_conf(name), label='QPSK', class=['dvbs2_modulation', 'dvbc_modulation']) }}
+      {{ select_option('psk_8', get_json_conf(name), label='PSK 8', class=['dvbs2_modulation']) }}
+      {{ select_option('apsk_16', get_json_conf(name), label='APSK 16', class=['dvbs2_modulation']) }}
+      {{ select_option('apsk_32', get_json_conf(name), label='APSK 32', class=['dvbs2_modulation']) }}
+      {{ select_option('apsk_64', get_json_conf(name), label='APSK 64', class=['dvbs2_modulation']) }}
+      {{ select_option('qam_16', get_json_conf(name), label='QAM 16', class=['dvbt_modulation', 'dvbc_modulation']) }}
+      {{ select_option('qam_32', get_json_conf(name), label='QAM 32', class=['dvbt_modulation', 'dvbc_modulation']) }}
+      {{ select_option('qam_64', get_json_conf(name), label='QAM 64', class=['dvbt_modulation', 'dvbc_modulation']) }}
+      {{ select_option('qam_128', get_json_conf(name), label='QAM 128', class=['dvbt_modulation', 'dvbc_modulation']) }}
+      {{ select_option('qam_256', get_json_conf(name), label='QAM 256', class=['dvbt_modulation', 'dvbc_modulation']) }}
+    {% endcall %}
+
+    <script>
+        $({{ selector(name) }}).on('change', function () {
+            var delivery_system = $({{ selector('delivery_system') }}).val();
+            var options = [];
+
+            $(this).find('option[value!="auto"]').each(function () {
+                $(this).hide();
+            });
+
+            if (delivery_system.includes('DVBS2')) {
+                $(this).find('option.dvbs2_modulation').each(function () {
+                    $(this).show();
+                    options.push($(this).val());
+                });
+            } else if (delivery_system.includes('DVBT')) {
+                $(this).find('option.dvbt_modulation').each(function () {
+                    $(this).show();
+                    options.push($(this).val());
+                });
+            } else if (delivery_system.includes('DVBC')) {
+                $(this).find('option.dvbc_modulation').each(function () {
+                    $(this).show();
+                    options.push($(this).val());
+                });
+            }
+
+            if (!options.includes($(this).val())) {
+                $(this).val('auto');
+            }
+
+            $(this).selectpicker('refresh');
+        }).trigger('change');
+    </script>
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro frequency_option() %}
+  {% call(id, name) form_group(name='frequency', label='Frequency',
+                               class='dvb_option dvbs_option dvbs2_option dvbt_option dvbt2_option  '
+                                     'dvbc_annex_a_option dvbc_annex_b_option atsc_option isdbt_option',
+                               tooltip='Please note the frequency is in MHz. For example: You can setup this '
+                                       'option to 12721 MHz for DVB-S/S2, or 114.75 MHz for DVB-C') %}
+    <div class="input-group">
+      {{ input(id, name, format_float(get_json_conf(name)), 'required', type='number', min=0, step=0.000001) }}
+      <span class="input-group-text">MHz</span>
+    </div>
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro symbol_rate_option() %}
+  {% call(id, name) form_group(name='symbol_rate', label='Symbol Rate',
+                               class='dvb_option dvbs_option dvbs2_option dvbc_annex_a_option',
+                               tooltip='Please note the symbol rate is in KBaud. For example: You can setup '
+                                       'this option to 43200 KBaud for DVB-S/S2, or 6952 KBaud for DVB-C') %}
+    <div class="input-group">
+      {{ input(id, name, format_float(get_json_conf(name)), 'required', type='number', min=0, step=0.000001) }}
+      <span class="input-group-text">KBd</span>
+    </div>
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro lnb_lof_option() %}
+  {% call(id, name) form_group(name='lnb_lof', label='LNB LOF',
+                               class='dvb_option dvbs_option dvbs2_option',
+                               tooltip='The Local Oscillator Frequency of the LNB') %}
+    <div class="input-group">
+      {{ input(id, name, format_float(get_json_conf(name)), placeholder='Auto', type='number', min=0, step=0.000001) }}
+      <span class="input-group-text">KHz</span>
+    </div>
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro bandwidth_option() %}
+  {% call(id, name) form_group(name='bandwidth', label='Bandwidth',
+                               class='dvb_option dvbt_option dvbt2_option isdbt_option') %}
+    <div class="input-group">
+      {{ input(id, name, get_json_conf(name), 'required', type='number', min=0) }}
+      <span class="input-group-text">MHz</span>
+    </div>
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro voltage_option() %}
+  {% call(id, name) form_group(name='voltage', label='Voltage',
+                               class='dvb_option dvbs_option dvbs2_option') %}
+    {% call(name) select(id, name, default='13') %}
+      {{ select_option('13', get_json_conf(name), label='13V', tags=['Vertical']) }}
+      {{ select_option('18', get_json_conf(name), label='18V', tags=['Horizontal']) }}
+    {% endcall %}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro diseqc_option() %}
+  {% call(id, name) form_group(name='diseqc', label='DiSEqC',
+                               class='dvb_option dvbs_option dvbs2_option') %}
+    {% call(name) select(id, name, default='0') %}
+      {{ select_option('0', get_json_conf(name), label='Disabled') }}
+      {{ select_option('1', get_json_conf(name), label='1') }}
+      {{ select_option('2', get_json_conf(name), label='2') }}
+      {{ select_option('3', get_json_conf(name), label='3') }}
+      {{ select_option('4', get_json_conf(name), label='4') }}
+      {{ select_option('A', get_json_conf(name), label='A') }}
+      {{ select_option('B', get_json_conf(name), label='B') }}
+    {% endcall %}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro force_pulse_option() %}
+  {% call(id, name) form_group(name='force_pulse', label='Force Pulse',
+                               class='dvb_option dvbs_option dvbs2_option') %}
+    {% call(name) select(id, name, default='no') %}
+      {{ select_option('yes', get_json_conf(name), label='Yes') }}
+      {{ select_option('no', get_json_conf(name), label='No') }}
+    {% endcall %}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro fec_inner_option() %}
+  {% call(id, name) form_group(name='fec_inner', label='FEC Inner',
+                               class='dvb_option dvbs_option dvbs2_option dvbt_option dvbt2_option') %}
+    {% call(name) select(id, name, default='999') %}
+      {{ select_option('999', get_json_conf(name), label='Auto') }}
+      {{ select_option('0', get_json_conf(name), label='0') }}
+      {{ select_option('12', get_json_conf(name), label='1/2') }}
+      {{ select_option('23', get_json_conf(name), label='2/3') }}
+      {{ select_option('34', get_json_conf(name), label='3/4') }}
+      {{ select_option('35', get_json_conf(name), label='3/5') }}
+      {{ select_option('35', get_json_conf(name), label='4/5') }}
+      {{ select_option('56', get_json_conf(name), label='5/6') }}
+      {{ select_option('78', get_json_conf(name), label='7/8') }}
+      {{ select_option('89', get_json_conf(name), label='8/9') }}
+      {{ select_option('910', get_json_conf(name), label='9/10') }}
+    {% endcall %}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro pilot_option() %}
+  {% call(id, name) form_group(name='pilot', label='Pilot', class='dvb_option dvbs2_option') %}
+    {% call(name) select(id, name, default='-1') %}
+      {{ select_option('-1', get_json_conf(name), label='Auto') }}
+      {{ select_option('1', get_json_conf(name), label='Yes') }}
+      {{ select_option('0', get_json_conf(name), label='No') }}
+    {% endcall %}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro rolloff_option() %}
+  {% call(id, name) form_group(name='rolloff', label='Rolloff', class='dvb_option dvbs2_option') %}
+    {% call(name) select(id, name, default='35') %}
+      {{ select_option('0', get_json_conf(name), label='Auto') }}
+      {{ select_option('20', get_json_conf(name), label='0.20') }}
+      {{ select_option('25', get_json_conf(name), label='0.25') }}
+      {{ select_option('35', get_json_conf(name), label='0.35') }}
+    {% endcall %}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro inversion_option() %}
+  {% call(id, name) form_group(name='inversion', label='Inversion',
+                               class='dvb_option dvbs_option dvbs2_option dvbt_option dvbt2_option '
+                                     'dvbc_annex_a_option dvbc_annex_b_option atsc_option isdbt_option') %}
+    {% call(name) select(id, name, default='-1') %}
+      {{ select_option('-1', get_json_conf(name), label='Auto') }}
+      {{ select_option('1', get_json_conf(name), label='Yes') }}
+      {{ select_option('0', get_json_conf(name), label='No') }}
+    {% endcall %}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro fec_lp_option() %}
+  {% call(id, name) form_group(name='fec_lp', label='Low Priority FEC',
+                               class='dvb_option dvbt_option dvbt2_option') %}
+    {{ input(id, name, get_json_conf(name), type='number', default='999') }}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro guard_option() %}
+  {% call(id, name) form_group(name='guard', label='Guard Interval',
+                               class='dvb_option dvbt_option dvbt2_option') %}
+    {% call(name) select(id, name, default='-1') %}
+      {{ select_option('-1', get_json_conf(name), label='Auto') }}
+      {{ select_option('4', get_json_conf(name), label='1/4') }}
+      {{ select_option('8', get_json_conf(name), label='1/8') }}
+      {{ select_option('16', get_json_conf(name), label='1/16') }}
+      {{ select_option('32', get_json_conf(name), label='1/32') }}
+    {% endcall %}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro hierarchy_option() %}
+  {% call(id, name) form_group(name='hierarchy', label='Hierarchy',
+                               class='dvb_option dvbt_option dvbt2_option') %}
+    {% call(name) select(id, name, default='-1') %}
+      {{ select_option('-1', get_json_conf(name), label='Auto') }}
+      {{ select_option('0', get_json_conf(name), label='0') }}
+      {{ select_option('1', get_json_conf(name), label='1') }}
+      {{ select_option('2', get_json_conf(name), label='2') }}
+      {{ select_option('4', get_json_conf(name), label='4') }}
+    {% endcall %}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro transmission_option() %}
+  {% call(id, name) form_group(name='transmission', label='Transmission',
+                               class='dvb_option dvbt_option dvbt2_option') %}
+    {% call(name) select(id, name, default='-1') %}
+      {{ select_option('-1', get_json_conf(name), label='Auto') }}
+      {{ select_option('2', get_json_conf(name), label='2') }}
+      {{ select_option('4', get_json_conf(name), label='4') }}
+      {{ select_option('8', get_json_conf(name), label='8') }}
+    {% endcall %}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro dvb_plp_id_option() %}
+  {% call(id, name) form_group(name='dvb_plp_id', label='DVB PLP ID',
+                               class='dvb_option dvbt2_option') %}
+    {{ input(id, name, get_json_conf(name), type='number', default='0') }}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro budget_mode_option() %}
+  {% call(id, name) form_group(name='budget_mode', label='Budget Mode',
+                               class='dvb_option dvbs_option dvbs2_option dvbt_option dvbt2_option '
+                                     'dvbc_annex_a_option dvbc_annex_b_option atsc_option isdbt_option') %}
+    {% call(name) select(id, name, default='yes') %}
+      {{ select_option('yes', get_json_conf(name), label='Yes') }}
+      {{ select_option('no', get_json_conf(name), label='No') }}
+    {% endcall %}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro softcam_option() %}
+  {% call(id, name) form_group(name='softcam_id',
+                               label='SoftCAM',
+                               tooltip='Software will find the corresponding SoftCAM server for decrypt '
+                                       'by default. This is an adapter level option applied for all the '
+                                       'DVB channels. Also, you can found stream level SoftCAM option '
+                                       'for specify which SoftCAM server will be used for decrypt this '
+                                       'stream. ') %}
+    {% call(name) select(id, name, default='None') %}
+      {{ select_option(' ', get_json_conf(name), label='Auto') }}
+      {% for softcam in softcams %}
+        {{ select_option(softcam.id, get_json_conf(name), tags=[softcam.name]) }}
+      {% endfor %}
+    {% endcall %}
+  {% endcall %}
+{% endmacro %}
+
+
+{% block title %}{{ title }}{% endblock %}
+
+
+{% block content %}
+  {% call panel(title=title) %}
+    {% call form(request.path, '/adapter/manage', save_actions=True) %}
+      {% call(id, name) form_group(name='id', label='Adapter ID') %}
+        {{ input(id, name, get_json_conf(name), type='number') }}
+      {% endcall %}
+      {{ name_option() }}
+      {{ server_option() }}
+      {{ device_option() }}
+      {{ ca_option() }}
+      {{ delivery_system_option() }}
+      {{ modulation_option() }}
+      {{ frequency_option() }}
+      {{ symbol_rate_option() }}
+      {{ lnb_lof_option() }}
+      {{ bandwidth_option() }}
+      {{ voltage_option() }}
+      {{ diseqc_option() }}
+      {{ force_pulse_option() }}
+      {{ fec_inner_option() }}
+      {{ pilot_option() }}
+      {{ rolloff_option() }}
+      {{ inversion_option() }}
+      {{ fec_lp_option() }}
+      {{ guard_option() }}
+      {{ hierarchy_option() }}
+      {{ transmission_option() }}
+      {{ dvb_plp_id_option() }}
+      {{ budget_mode_option() }}
+
+      {% call(id, name) form_group(label='Unicable', class='dvb_option dvbs_option dvbs2_option',
+                                   tooltip='Frequency is in KHz') %}
+        {% call() float_group() %}
+          {% call(id, name) float_label(name='unicable_ver', label='version', width='35%') %}
+            {% call(name) select(id, name, default='2') %}
+              {{ select_option('1', get_json_conf(name), label='1') }}
+              {{ select_option('2', get_json_conf(name), label='2') }}
+            {% endcall %}
+          {% endcall %}
+          {% call(id, name) float_label(name='unicable_id', label='id', width='35%') %}
+            {{ input(id, name, get_json_conf(name), type='number', min=0, max=31) }}
+          {% endcall %}
+          {% call(id, name) float_label(name='unicable_freq', label='frequency', width='30%') %}
+            {{ input(id, name, get_json_conf(name), type='number', min=0) }}
+          {% endcall %}
+        {% endcall %}
+      {% endcall %}
+
+      {% call(id, name) form_group(label='Multistream / PLS', class='dvb_option dvbs_option dvbs2_option') %}
+        {% call() float_group() %}
+          {% call(id, name) float_label(name='multistream_id_pls_mode', label='mode', width='35%') %}
+            {% call(name) select(id, name, default='ROOT') %}
+              {{ select_option('ROOT', get_json_conf(name), label='ROOT') }}
+              {{ select_option('GOLD', get_json_conf(name), label='GOLD') }}
+              {{ select_option('COMBO', get_json_conf(name), label='COMBO') }}
+            {% endcall %}
+          {% endcall %}
+          {% call(id, name) float_label(name='multistream_id_pls_code', label='code', width='35%') %}
+            {{ input(id, name, get_json_conf(name), type='number', min=0, max=262143) }}
+          {% endcall %}
+          {% call(id, name) float_label(name='multistream_id_is_id', label='id', width='30%') %}
+            {{ input(id, name, get_json_conf(name), type='number', min=0, max=255) }}
+          {% endcall %}
+        {% endcall %}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='charset', label='Charset') %}
+        {% call(name) select(id, name, default='utf-8') %}
+          {{ select_option('ascii', get_json_conf(name), label='ASCII') }}
+          {{ select_option('big5', get_json_conf(name), label='BIG5') }}
+          {{ select_option('big5hkscs', get_json_conf(name), label='BIG5HKSCS') }}
+          {{ select_option('cp037', get_json_conf(name), label='CP037') }}
+          {{ select_option('cp273', get_json_conf(name), label='CP273') }}
+          {{ select_option('cp424', get_json_conf(name), label='CP424') }}
+          {{ select_option('cp437', get_json_conf(name), label='CP437') }}
+          {{ select_option('cp500', get_json_conf(name), label='CP500') }}
+          {{ select_option('cp720', get_json_conf(name), label='CP720') }}
+          {{ select_option('cp737', get_json_conf(name), label='CP737') }}
+          {{ select_option('cp775', get_json_conf(name), label='CP775') }}
+          {{ select_option('cp850', get_json_conf(name), label='CP850') }}
+          {{ select_option('cp852', get_json_conf(name), label='CP852') }}
+          {{ select_option('cp855', get_json_conf(name), label='CP855') }}
+          {{ select_option('cp856', get_json_conf(name), label='CP856') }}
+          {{ select_option('cp857', get_json_conf(name), label='CP857') }}
+          {{ select_option('cp858', get_json_conf(name), label='CP858') }}
+          {{ select_option('cp860', get_json_conf(name), label='CP860') }}
+          {{ select_option('cp861', get_json_conf(name), label='CP861') }}
+          {{ select_option('cp862', get_json_conf(name), label='CP862') }}
+          {{ select_option('cp863', get_json_conf(name), label='CP863') }}
+          {{ select_option('cp864', get_json_conf(name), label='CP864') }}
+          {{ select_option('cp865', get_json_conf(name), label='CP865') }}
+          {{ select_option('cp866', get_json_conf(name), label='CP866') }}
+          {{ select_option('cp869', get_json_conf(name), label='CP869') }}
+          {{ select_option('cp874', get_json_conf(name), label='CP874') }}
+          {{ select_option('cp875', get_json_conf(name), label='CP875') }}
+          {{ select_option('cp932', get_json_conf(name), label='CP932') }}
+          {{ select_option('cp949', get_json_conf(name), label='CP949') }}
+          {{ select_option('cp950', get_json_conf(name), label='CP950') }}
+          {{ select_option('cp1006', get_json_conf(name), label='CP1006') }}
+          {{ select_option('cp1026', get_json_conf(name), label='CP1026') }}
+          {{ select_option('cp1125', get_json_conf(name), label='CP1125') }}
+          {{ select_option('cp1140', get_json_conf(name), label='CP1140') }}
+          {{ select_option('cp1250', get_json_conf(name), label='CP1250') }}
+          {{ select_option('cp1251', get_json_conf(name), label='CP1251') }}
+          {{ select_option('cp1252', get_json_conf(name), label='CP1252') }}
+          {{ select_option('cp1253', get_json_conf(name), label='CP1253') }}
+          {{ select_option('cp1254', get_json_conf(name), label='CP1254') }}
+          {{ select_option('cp1255', get_json_conf(name), label='CP1255') }}
+          {{ select_option('cp1256', get_json_conf(name), label='CP1256') }}
+          {{ select_option('cp1257', get_json_conf(name), label='CP1257') }}
+          {{ select_option('cp1258', get_json_conf(name), label='CP1258') }}
+          {{ select_option('euc-jp', get_json_conf(name), label='EUC-JP') }}
+          {{ select_option('euc-jis-2004', get_json_conf(name), label='EUC-JIS-2004') }}
+          {{ select_option('euc-jisx0213', get_json_conf(name), label='EUC-JISX0213') }}
+          {{ select_option('euc-kr', get_json_conf(name), label='EUC-KR') }}
+          {{ select_option('gb2312', get_json_conf(name), label='GB2312') }}
+          {{ select_option('gbk', get_json_conf(name), label='GBK') }}
+          {{ select_option('gb18030', get_json_conf(name), label='GB18030') }}
+          {{ select_option('hz', get_json_conf(name), label='HZ') }}
+          {{ select_option('iso2022-jp', get_json_conf(name), label='ISO2022-JP') }}
+          {{ select_option('iso2022-jp-1', get_json_conf(name), label='ISO2022-JP-1') }}
+          {{ select_option('iso2022-jp-2', get_json_conf(name), label='ISO2022-JP-2') }}
+          {{ select_option('iso2022-jp-2004', get_json_conf(name), label='ISO2022-JP-2004') }}
+          {{ select_option('iso2022-jp-3', get_json_conf(name), label='ISO2022-JP-3') }}
+          {{ select_option('iso2022-jp-ext', get_json_conf(name), label='ISO2022-JP-EXT') }}
+          {{ select_option('iso2022-kr', get_json_conf(name), label='ISO2022-KR') }}
+          {{ select_option('latin-1', get_json_conf(name), label='LATIN-1') }}
+          {{ select_option('iso8859-2', get_json_conf(name), label='ISO8859-2') }}
+          {{ select_option('iso8859-3', get_json_conf(name), label='ISO8859-3') }}
+          {{ select_option('iso8859-4', get_json_conf(name), label='ISO8859-4') }}
+          {{ select_option('iso8859-5', get_json_conf(name), label='ISO8859-5') }}
+          {{ select_option('iso8859-6', get_json_conf(name), label='ISO8859-6') }}
+          {{ select_option('iso8859-7', get_json_conf(name), label='ISO8859-7') }}
+          {{ select_option('iso8859-8', get_json_conf(name), label='ISO8859-8') }}
+          {{ select_option('iso8859-9', get_json_conf(name), label='ISO8859-9') }}
+          {{ select_option('iso8859-10', get_json_conf(name), label='ISO8859-10') }}
+          {{ select_option('iso8859-11', get_json_conf(name), label='ISO8859-11') }}
+          {{ select_option('iso8859-13', get_json_conf(name), label='ISO8859-13') }}
+          {{ select_option('iso8859-14', get_json_conf(name), label='ISO8859-14') }}
+          {{ select_option('iso8859-15', get_json_conf(name), label='ISO8859-15') }}
+          {{ select_option('iso8859-16', get_json_conf(name), label='ISO8859-16') }}
+          {{ select_option('johab', get_json_conf(name), label='JOHAB') }}
+          {{ select_option('koi8-r', get_json_conf(name), label='KOI8-R') }}
+          {{ select_option('koi8-t', get_json_conf(name), label='KOI8-T') }}
+          {{ select_option('koi8-u', get_json_conf(name), label='KOI8-U') }}
+          {{ select_option('kz1048', get_json_conf(name), label='KZ1048') }}
+          {{ select_option('mac-cyrillic', get_json_conf(name), label='MAC-CYRILLIC') }}
+          {{ select_option('mac-greek', get_json_conf(name), label='MAC-GREEK') }}
+          {{ select_option('mac-iceland', get_json_conf(name), label='MAC-ICELAND') }}
+          {{ select_option('mac-latin2', get_json_conf(name), label='MAC-LATIN2') }}
+          {{ select_option('mac-roman', get_json_conf(name), label='MAC-ROMAN') }}
+          {{ select_option('mac-turkish', get_json_conf(name), label='MAC-TURKISH') }}
+          {{ select_option('ptcp154', get_json_conf(name), label='PTCP154') }}
+          {{ select_option('shift-jis', get_json_conf(name), label='SHIFT-JIS') }}
+          {{ select_option('shift-jis-2004', get_json_conf(name), label='SHIFT-JIS-2004') }}
+          {{ select_option('shift-jisx0213', get_json_conf(name), label='SHIFT-JISX0213') }}
+          {{ select_option('utf-32', get_json_conf(name), label='UTF-32') }}
+          {{ select_option('utf-32-be', get_json_conf(name), label='UTF-32-BE') }}
+          {{ select_option('utf-32-le', get_json_conf(name), label='UTF-32-LE') }}
+          {{ select_option('utf-16', get_json_conf(name), label='UTF-16') }}
+          {{ select_option('utf-16-be', get_json_conf(name), label='UTF-16-BE') }}
+          {{ select_option('utf-16-le', get_json_conf(name), label='UTF-16-LE') }}
+          {{ select_option('utf-7', get_json_conf(name), label='UTF-7') }}
+          {{ select_option('utf-8', get_json_conf(name), label='UTF-8') }}
+          {{ select_option('utf-8-sig', get_json_conf(name), label='UTF-8-SIG') }}
+        {% endcall %}
+      {% endcall %}
+
+      {{ softcam_option() }}
+
+      {% call(id, name) form_group(name='service_disabled[]', label='Service Disabled') %}
+        {% call(name) select(id, name, 'multiple', title='\u00a0', **{'data-multiple-separator': ' '}) %}
+          {% for service in adapter.services %}
+            {{ select_option(service.sid, get_json_conf(name), tags=[service.name]) }}
+          {% endfor %}
+        {% endcall %}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='udp_output_address', label='UDP Output Address',
+                                   tooltip='This option will output all received DVB channels to the target UDP '
+                                           'unicast or multicast address, and the sid will be used as the port '
+                                           'number in the UDP output.') %}
+        {{ input(id, name, get_json_conf(name), pattern='^(\d+)\.(\d+)\.(\d+)\.(\d+)$') }}
+      {% endcall %}
+
+    {% endcall %}
+  {% endcall %}
+{% endblock %}

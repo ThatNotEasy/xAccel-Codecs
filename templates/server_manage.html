@@ -1,0 +1,120 @@
+{% extends "layout.html" %}
+{% from "bootstrap.html" import colorful_label, table with context %}
+
+{% block title %}Manage Servers{% endblock %}
+
+{% block content %}
+  {% set columns = ['ID', 'Name', 'Uptime', 'CPU', 'Memory', 'Network',  'Disk', 'Upload', 'Download', 'Ping RTT', 'Ping Jitter', 'Ping Lost', 'Latency', 'QPS', 'Streams', 'Connections', 'License Status', 'Settings'] %}
+  {% set columnDefs = [
+      {'type': 'uptime', 'targets': 2},
+      {'type': 'number', 'targets': [3, 4, 5, 6]},
+      {'type': 'bandwidth', 'targets': [7, 8]},
+  ] %}
+
+  {% call table(columns=columns, disabled=[3, 4, 5, 6], columnDefs=columnDefs) %}
+    {% for server in servers %}
+      <tr id="server-{{ server.id }}-row">
+        <td class="id">{{ server.id }}</td>
+        <td>
+          <div class="name badge bg-primary">{{ server.name }}</div>
+        </td>
+        <td class="uptime">{{ struptime(server.uptime) }}</td>
+        <td class="cpu-percent">{{ server.cpu_percent }}%</td>
+        <td class="mem-percent">{{ server.mem_percent }}%</td>
+        <td class="net-percent">{{ server.net_percent }}%</td>
+        <td class="disk-percent">{{ server.disk_percent }}%</td>
+        <td class="net-send-bps">{{ net_speed_desc(server.net_send_bps) }} </td>
+        <td class="net-recv-bps">{{ net_speed_desc(server.net_recv_bps) }}</td>
+        <td class="ping-rtt">{% if server.info.get('ping_rtt') is not none %} {{ server.info.get('ping_rtt') }}ms {% else %} - {% endif %}</td>
+        <td class="ping-jitter">{% if server.info.get('ping_jitter') is not none %} {{ server.info.get('ping_jitter') }}ms {% else %} - {% endif %}</td>
+        <td class="ping-lost">{% if server.info.get('ping_lost') is not none %} {{ server.info.get('ping_lost') }}% {% else %} - {% endif %}</td>
+        <td class="latency">{% if server.info.get('latency') is not none %} {{ server.info.get('latency') }}ms {% else %} - {% endif %}</td>
+        <td class="qps">{% if server.info.get('qps') is not none %} {{ server.info.get('qps') }} {% else %} - {% endif %}</td>
+        <td class="nb-streams">{{ server.nb_streams }}</td>
+        <td class="nb-connections">{{ server.nb_connections }}</td>
+        <td>
+          {% if server.license('status') == 'Active' and not server.license('error') %}
+            <div class="license badge bg-success">{{ server.license('status') }} / {{ server.license('expire_date') }}</div>
+          {% elif server.license('key') %}
+            <div class="license badge bg-warning">{{ server.license('status') }} / {{ server.license('expire_date') }}</div>
+          {% else %}
+            <div class="license badge bg-danger">No License</div>
+          {% endif %}
+        </td>
+        <td>
+          <a href="{{ url_for('server.usage', server=server) }}" class="btn btn-link">
+            <i class="fa fa-chart-line" title="usage"></i>
+          </a>
+
+          <a href="{{ url_for('server.license', server=server) }}" class="btn btn-link">
+            <i class="fa fa-clock" title="license"></i>
+          </a>
+
+          <a href="{{ url_for('server.settings', server=server) }}" class="btn btn-link">
+            <i class="fa fa-cog" title="settings"></i>
+          </a>
+
+          <a href="{{ url_for('server.log', server=server) }}" class="btn btn-link">
+            <i class="fa fa-file" title="log"></i>
+          </a>
+
+          <form action="{{ url_for('server.restart', server=server) }}" method="post">
+            <button type="submit" class="btn btn-link"
+                    data-toggle="confirmation"
+                    data-message="Please confirm to restart the server {{ server.id }} {{ server.name }} software service?">
+              <i class="fa fa-power-off" title="restart"></i>
+            </button>
+          </form>
+
+          <form action="{{ url_for('server.delete', server=server) }}" method="post">
+            <button type="submit" class="btn btn-link"
+                    data-toggle="confirmation"
+                    data-message="Please confirm to delete the server {{ server.id }} {{ server.name }}?">
+              <i class="fa fa-times text-danger" title="delete"></i>
+            </button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+  {% endcall %}
+
+  <!--suppress JSUnresolvedVariable -->
+  <script>
+      function server_update(server) {
+          var row = $('#server-' + server.id + '-row');
+          $('.name', row).html(server.name);
+          $('.uptime', row).html(struptime(server.uptime));
+          $('.cpu-percent', row).html(server.cpu_percent + '%');
+          $('.mem-percent', row).html(server.mem_percent + '%');
+          $('.net-percent', row).html(server.net_percent + '%');
+          $('.disk-percent', row).html(server.disk_percent + '%');
+          $('.net-send-bps', row).html(net_speed_desc(server.net_send_bps));
+          $('.net-recv-bps', row).html(net_speed_desc(server.net_recv_bps));
+          $('.ping-rtt', row).html(server.ping_rtt ? server.ping_rtt + 'ms' : '-');
+          $('.ping-jitter', row).html(server.ping_jitter ? server.ping_jitter + 'ms' : '-');
+          $('.ping-lost', row).html(server.ping_lost ? server.ping_lost + '%' : '-');
+          $('.latency', row).html(server.latency ? server.latency + 'ms' : '-');
+          $('.qps', row).html(server.qps ? server.qps : '-');
+          $('.nb-streams', row).html(server.nb_streams);
+          $('.nb-connections', row).html(server.nb_connections);
+
+          var color = 'bg-danger';
+          if (server.license_status === 'Active' && !server.license_error) {
+              color = 'bg-success';
+          } else if (server.license_status !== null) {
+              color = 'bg-warning';
+          }
+
+          $('.license', row).prop('class', 'license badge ' + color).html(server.license_status ? server.license_status + ' / ' + server.license_expire_date : 'No License');
+      }
+
+      setInterval(function () {
+          $.ajax({
+              url: '{{ url_for('server.stats') }}',
+              success: function (servers) {
+                  servers.forEach(server_update);
+              }
+          });
+      }, 1000);
+  </script>
+{% endblock %}

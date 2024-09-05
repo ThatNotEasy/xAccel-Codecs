@@ -1,0 +1,86 @@
+{% extends "layout.html" %}
+{% from "bootstrap.html" import colorful_label, table with context %}
+
+{% block title %}Connections{% endblock %}
+
+{% block content %}
+  {% set columns = ['ID', 'Name', 'Server', 'Protocol', 'IP', 'Port', 'Time', 'User', 'Country Code', 'Country', 'Region', 'City', 'Settings'] %}
+  {% set columnDefs = [
+      {'type': 'uptime', 'targets': 6},
+  ] %}
+
+
+  {% call table(columns=columns, disabled=[9, 10, 11], columnDefs=columnDefs) %}
+  {% endcall %}
+
+  <script>
+      function delete_connection() {
+          var id = $(this).closest('tr').attr('id');
+          $.ajax({
+              url: '/system/connection/' + id + '/delete',
+              method: 'POST',
+              dataType: 'json',
+              success: function (response) {
+                  if ('error' in response) {
+                      flash_message(response['error']);
+                  } else {
+                      flash_message('Connection ' + id + ' is deleted successfully', 'success');
+                  }
+              }
+          });
+      }
+
+      $(function () {
+          setInterval(function () {
+              $.ajax({
+                  url: "{{ url_for('system.connection_stats') }}",
+                  method: 'GET',
+                  dataType: 'json',
+                  success: function (response) {
+                      var all_ids = [];
+
+                      response.forEach(function (connection) {
+                          var time = table.cell('#' + connection.id, 6);
+                          if (time.length > 0) {
+                              time.data(struptime(connection.time));
+                          } else {
+                              var name = '';
+
+                              if (connection.stream_name) {
+                                  name = connection.stream_name;
+                              } else if (connection.movie_name) {
+                                  name = connection.movie_name;
+                              } else if (connection.episode_name) {
+                                  name = connection.episode_name;
+                              }
+
+                              table.row.add([
+                                  connection.id,
+                                  '<div class="badge bg-primary">' + name + '</div>',
+                                  colorful_label(connection.server_name),
+                                  colorful_label(connection.protocol.toUpperCase()),
+                                  connection.address, connection.port, struptime(connection.time), connection.username,
+                                  connection.country_code, connection.country, connection.region, connection.city,
+                                  '<button type="button" class="btn btn-link" onclick="delete_connection.call(this)"><i class="fa fa-times text-danger" title="delete"></i></button>'
+                              ]).node().id = connection.id;
+                          }
+
+                          all_ids.push(connection.id);
+                      });
+
+                      table.rows().every(function () {
+                          var id = parseInt(this.node().id);
+
+                          if (!all_ids.includes(id)) {
+                              this.remove();
+                          }
+                      });
+
+                      table.draw();
+                  }
+              });
+          }, 1000);
+      });
+  </script>
+
+{% endblock %}

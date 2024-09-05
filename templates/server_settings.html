@@ -1,0 +1,179 @@
+{% extends "layout.html" %}
+{% from "bootstrap.html" import form, panel, form_group, float_group, float_label, input, textarea,
+                                select, select_option, selector, progress_modal with context %}
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+  {% call panel(title=title) %}
+    {% call form(request.path, url_for('server.manage')) %}
+      {% call(id, name) form_group(name='name', label='Name') %}
+        {{ input(id, name, get_json_conf(name), 'required') }}
+      {% endcall %}
+
+      {% if not get_json_conf('is_master') %}
+        {% call(id, name) form_group(label='SSH / Secure Shell',
+                                     tooltip='SSH login info will be used for server configuration and upgrade.') %}
+          {% call() float_group() %}
+            {% call(id, name) float_label(name='ssh_hostname', label='hostname') %}
+              {{ input(id, name, get_json_conf(name), 'required') }}
+            {% endcall %}
+
+            {% call(id, name) float_label(name='ssh_port', label='port') %}
+              {{ input(id, name, get_json_conf(name) or 22, 'required', type='number', min=0, max=65535) }}
+            {% endcall %}
+          {% endcall %}
+        {% endcall %}
+
+        {% call(id, name) form_group() %}
+          {% call() float_group() %}
+            {% call(id, name) float_label(name='ssh_username', label='username') %}
+              {{ input(id, name, get_json_conf(name), 'required') }}
+            {% endcall %}
+
+            {% call(id, name) float_label(name='ssh_password', label='password') %}
+              {{ input(id, name, get_json_conf(name), 'required', type='password') }}
+            {% endcall %}
+          {% endcall %}
+        {% endcall %}
+      {% endif %}
+
+      {% call(id, name) form_group(label='HTTP / RTMP Port',
+                                   tooltip='HTTP port will be used for serve the HLS and HTTP-TS streaming service.') %}
+        {% call() float_group() %}
+          {% call(id, name) float_label(name='http_port', label='http') %}
+            {{ input(id, name, get_json_conf(name) or 80, 'required', type='number', min=1, max=65535) }}
+          {% endcall %}
+
+          {% call(id, name) float_label(name='rtmp_port', label='rtmp') %}
+            {{ input(id, name, get_json_conf(name) or 1935, 'required', type='number', min=1, max=65535) }}
+          {% endcall %}
+        {% endcall %}
+      {% endcall %}
+
+      {% call(id, name) form_group(label='Max Bandwidth',
+                                   tooltip='Max download and upload bandwidth in Megabit/s.') %}
+        {% call() float_group() %}
+          {% call(id, name) float_label(name='max_download', label='download Mbit/s') %}
+            {{ input(id, name, get_json_conf(name) or 1000, 'required', type='number', min=-1) }}
+          {% endcall %}
+
+          {% call(id, name) float_label(name='max_upload', label='upload Mbit/s') %}
+            {{ input(id, name, get_json_conf(name) or 1000, 'required', type='number', min=-1) }}
+          {% endcall %}
+        {% endcall %}
+      {% endcall %}
+
+      {% if server.interfaces %}
+        {% call(id, name) form_group(name='primary_interface', label='Primary Interface') %}
+          {% call(name) select(id, name) %}
+            {% for k, v in server.interfaces.items() %}
+              {{ select_option(k, get_json_conf(name), label=v, tags=[k]) }}
+            {% endfor %}
+          {% endcall %}
+        {% endcall %}
+      {% endif %}
+
+      {% call(id, name) form_group(name='public_ip', label='Public IP / Domain',
+                                   tooltip='This option is set up the server public IP or domain, it\'s '
+                                           'useful when you wish to use domain name or need mapping the '
+                                           'public IP to the server or enable HTTPS.') %}
+        {{ input(id, name, get_json_conf(name), type='text', pattern='^((?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4})|((?:\d{1,3}\.){3}\d{1,3})|([0-9a-z-.]+\.[a-z]+)$') }}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='https', label='HTTPS',
+                                   tooltip='For enable the HTTPS, please make sure you have a domain is point to this server first. '
+                                           'Then fill the domain name in the above Public IP / Domain option. '
+                                           'If your server has public IP and port 80 is open, you can use HTTP Auth. '
+                                           'It will request the SSL certifications automatically from let\'s encrypt. '
+                                           'Otherwise, you need use DNS Auth, by adding TXT record to your domain. '
+                                           'The SSL certification is 3 months valid, and the panel will renew it '
+                                           'in the last week before it expires.') %}
+        {% call() float_group() %}
+          {% set ssl_info = '' %}
+          {% if 'letsencrypt' in get_json_conf(name)|string %}
+            {% if server.info.get('ssl_expire_date') is not none %}
+              {% set ssl_info = ssl_info + 'SSL valid to ' + server.info.get('ssl_expire_date') %}
+            {% endif %}
+
+            {% if server.info.get('ssl_expire_after') is not none %}
+              {% if server.info.get('ssl_expire_after') > 0 %}
+                {% set ssl_info = ssl_info + ' (expire after ' + server.info.get('ssl_expire_after')|string + ' days)' %}
+              {% else %}
+                {% set ssl_info = ssl_info + ' (expired)' %}
+              {% endif %}
+            {% endif %}
+          {% endif %}
+
+          {% call(id, name) float_label(name=name, label=ssl_info) %}
+            {% call(name) select(id, name, title='\u00a0') %}
+              {{ select_option('', get_json_conf(name), label='\u00a0') }}
+              {{ select_option('letsencrypt_http', get_json_conf(name), tags=['Let\'s Encrypt', 'HTTP Auth']) }}
+              {{ select_option('letsencrypt_dns', get_json_conf(name), tags=['Let\'s Encrypt', 'DNS Auth']) }}
+            {% endcall %}
+          {% endcall %}
+        {% endcall %}
+
+        {% if get_json_conf(name) == 'letsencrypt_dns' and server.info.get('dns01_challenge') %}
+          <small>
+            Please setup the DNS <strong>_acme-challenge.{{ get_json_conf('public_ip') }}</strong>'s TXT record to <code>{{ server.info.get('dns01_challenge') }}</code>
+          </small>
+        {% endif %}
+      {% endcall %}
+
+      {% call(id, name) form_group() %}
+        {% if get_json_conf('https') %}
+          <label class="form-check">
+            <input class="form-check-input" type="checkbox" name="ssl_renew_now" value="yes">
+            <span class="form-check-label">Renew SSL Now</span>
+          </label>
+        {% endif %}
+
+        {% if not server.is_master %}
+        <label class="form-check">
+          <input class="form-check-input" type="checkbox" name="install" value="yes" {% if request.path == url_for('server.add') %} checked {% endif %}>
+          <span class="form-check-label">Install / Reinstall</span>
+        </label>
+        {% endif %}
+
+        <label class="form-check">
+          <input class="form-check-input" type="checkbox" name="import" value="yes" {% if request.path == url_for('server.add') %} checked {% endif %}>
+          <span class="form-check-label">Import V3 Configuration</span>
+        </label>
+
+        {% if request.path != url_for('server.add') %}
+          <label class="form-check">
+            <input class="form-check-input" type="checkbox" name="transfer" value="yes">
+            <span class="form-check-label">Transfer Configuration To Another Server</span>
+            <script>
+                $({{ selector('transfer') }}).on('change', function () {
+                    selectpicker_toggle('transfer_server', $(this).is(':checked'));
+                });
+            </script>
+          </label>
+        {% endif %}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='transfer_server', hide=True) %}
+        {% call(name) select(id, name) %}
+          {% for server in get_servers() %}
+            {% if server.id != get_json_conf('id') %}
+              {{ select_option(server.id, get_json_conf(name), tags=[server.name]) }}
+            {% endif %}
+          {% endfor %}
+        {% endcall %}
+      {% endcall %}
+
+    {% endcall %}
+  {% endcall %}
+
+  {{ progress_modal(url_for('server.install_progress', server=server)) }}
+
+  <script>
+      $('form').on('submit', function (e) {
+          if (!$('[name="install"]').prop('checked'))
+              return true;
+
+          progress_modal_update();
+      });
+  </script>
+{% endblock %}

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>{{ title }} {{ src }} - X Acceleration Codec</title>
+  <link rel="stylesheet" href="/static/css/video-js.min.css">
+  <script src="/static/js/jquery.min.js"></script>
+  <script src="/static/js/voca.min.js"></script>
+  <script src="/static/js/video.min.js"></script>
+  <script src="/static/js/videojs-http-streaming.min.js"></script>
+  <script src="/static/js/videojs-flash.min.js"></script>
+  <script src="/static/js/videojs.hotkeys.min.js"></script>
+</head>
+<body style="margin: 0">
+  <video class="video-js vjs-default-skin vjs-big-play-centered center-block"
+         id="vjs-player" width="852" height="480">
+    {% for url in urls %}
+      <source src="{{ url['src'] }}" type="{{ url['type'] }}">
+    {% endfor %}
+  </video>
+
+  <script>
+      /*
+       * Initialize the videojs player immediately after video tag, this
+       * can decrease the delay of load videojs player.
+       * */
+      var player = videojs('vjs-player', {
+          preload: true,
+          autoplay: true,
+          controls: true,
+          controlBar: {
+              'liveDisplay': true,
+              'pictureInPictureToggle': false
+          },
+          html5: {
+              hls: {
+                  withCredentials: true,
+                  handleManifestRedirects: true
+              }
+          },
+          flash: {
+              hls: {
+                  withCredentials: true,
+                  handleManifestRedirects: true
+              }
+          }
+      });
+
+      /*
+       * Initialize the hot keys plugin after videojs ready.
+       * */
+      player.ready(function () {
+          this.hotkeys({
+              volumeStep: 0.1,
+              seekStep: 5,
+              enableModifiersForNumbers: false,
+              alwaysCaptureHotkeys: true
+          }).play();
+
+          /* Give focus to the videojs player, so the videojs hot keys can working immediately. */
+          $('#vjs-player').focus();
+      });
+
+      $(window).on('resize', function () {
+          player.width(window.innerWidth);
+          player.height(window.innerHeight);
+      });
+  </script>
+</body>
+</html>

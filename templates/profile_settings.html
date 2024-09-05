@@ -1,0 +1,60 @@
+{% extends "layout.html" %}
+{% from "bootstrap.html" import panel, form, form_group, input, unique_id with context %}
+{% from "stream_options.html" import server_option,
+                                     video_sync_option, hwaccel_method_option, hwaccel_device_option,
+                                     video_encoders_option, video_preset_option,
+                                     video_profile_option, video_level_option,
+                                     frame_rate_option, keyframe_interval_option,
+                                     deinterlace_option, display_aspect_ratio_option,
+                                     pixel_format_option, overlay_option,
+                                     drawtext_option,
+                                     audio_encoders_option, audio_channels_option,
+                                     audio_sample_rate_option, audio_bitrate_option, audio_volume_option,
+                                     subtitle_encoder_option, subtitle_font_option, subtitle_fontsize_option,
+                                     script_init with context %}
+
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+  {% call panel(title=title) %}
+    {% call form(request_path or request.path, '/profile/manage', save_actions=True if request.path != url_for('profile.add') else False) %}
+      {% call(id, name) form_group(name='id', label='Profile ID') %}
+        {{ input(id, name, get_json_conf(name), type='number') }}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='name', label='Profile Name') %}
+        {{ input(id, name, get_json_conf(name), 'required') }}
+      {% endcall %}
+
+      {{ server_option() }}
+      {{ video_sync_option() }}
+      {{ hwaccel_method_option() }}
+      {{ hwaccel_device_option() }}
+      {{ video_encoders_option() }}
+      {{ video_preset_option() }}
+      {{ video_profile_option() }}
+      {{ video_level_option() }}
+      {{ frame_rate_option() }}
+      {{ keyframe_interval_option() }}
+      {{ deinterlace_option() }}
+      {{ pixel_format_option() }}
+      {{ display_aspect_ratio_option() }}
+      {{ overlay_option() }}
+      {{ drawtext_option() }}
+
+      <hr class="divider"/>
+
+      {{ audio_encoders_option() }}
+      {{ audio_channels_option() }}
+      {{ audio_sample_rate_option() }}
+      {{ audio_volume_option() }}
+
+      <hr class="divider"/>
+
+      {{ subtitle_encoder_option() }}
+      {{ subtitle_font_option() }}
+      {{ subtitle_fontsize_option() }}
+    {% endcall %}
+  {% endcall %}
+{% endblock %}

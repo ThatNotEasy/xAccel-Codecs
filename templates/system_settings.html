@@ -1,0 +1,208 @@
+{% extends "layout.html" %}
+{% from "bootstrap.html" import panel, form, form_group, input, select, select_option, textarea, timer_selectpicker,
+                                float_label, float_group, selector, with context %}
+{% from "stream_options.html" import offline_video_option with context %}
+
+{% block title %}{{ title }}{% endblock %}
+
+
+{% block content %}
+  {% call panel('System Settings') %}
+    {% call form(url_for('system.settings'), url_for('system.settings')) %}
+      {% call(id, name) form_group(name='stream_timeout', label='Stream Timeout') %}
+        <div class="input-group">
+          {{ input(id, name, get_json_conf(name), 'required', type='number', min=30) }}
+          <span class="input-group-text">Seconds</span>
+        </div>
+      {% endcall %}
+
+      {% call(id, name) form_group(name='server_timeout', label='Server Timeout',
+                                   tooltip='This option is for used to decide how many seconds to consider the slave '
+                                           'servers are offline after they lost connection. And the service in '
+                                           'offline server will be restarted.') %}
+        <div class="input-group">
+          {{ input(id, name, get_json_conf(name), 'required', type='number', min=10, max=600, default=60) }}
+          <span class="input-group-text">Seconds</span>
+        </div>
+      {% endcall %}
+
+      {% call(id, name) form_group(name='mysql_timeout', label='MySQL Timeout') %}
+        <div class="input-group">
+          {{ input(id, name, get_json_conf(name), 'required', type='number', min=1, max=600, default=10) }}
+          <span class="input-group-text">Seconds</span>
+        </div>
+      {% endcall %}
+
+      {% call(id, name) form_group(name='stream_interval', label='Stream Start / Restart Interval') %}
+        <div class="input-group">
+          {{ input(id, name, get_json_conf(name), 'required', type='number', step=0.001, min=0, max=60, default=0.5) }}
+          <span class="input-group-text">Seconds</span>
+        </div>
+      {% endcall %}
+
+      {% call(id, name) form_group(name='ondemand_inactive_time', label='Stream On Demand Inactive Time') %}
+        <div class="input-group">
+          {{ input(id, name, get_json_conf(name), 'required', type='number', min=10, max=600, default=60) }}
+          <span class="input-group-text">Seconds</span>
+        </div>
+      {% endcall %}
+
+      {% call(id, name) form_group(name='epg_update_interval', label='EPG Update Interval') %}
+        <div class="input-group">
+          {{ input(id, name, get_json_conf(name), 'required', type='number', min=60) }}
+          <span class="input-group-text">Seconds</span>
+        </div>
+      {% endcall %}
+
+      {% call(id, name) form_group(name='switch_delay', label='Priority URL Switch Delay') %}
+        <div class="input-group">
+          {{ input(id, name, get_json_conf(name), 'required', type='number', min=0, default=0) }}
+          <span class="input-group-text">Minutes</span>
+        </div>
+      {% endcall %}
+
+      {% call(id, name) form_group(name='priority_switch', label='Automatic Priority URL Switch',
+                                   tooltip='If your stream has multiple backup URLs, it will switch to '
+                                           'the priority URL when it\'s online again. You can set '
+                                           'this option to Disabled if you don\'t want it switch.') %}
+        {% call(name) select(id, name, title='\u00a0', default='True') %}
+          {{ select_option('False', get_json_conf(name), label='Disabled') }}
+          {{ select_option('True', get_json_conf(name), label='Enabled') }}
+        {% endcall %}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='encryption_check', label='Output Encryption Check') %}
+        {% call(name) select(id, name, title='\u00a0', default='False') %}
+          {{ select_option('False', get_json_conf(name), label='Disabled') }}
+          {{ select_option('True', get_json_conf(name), label='Enabled') }}
+        {% endcall %}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='hls_muxer', label='HLS Muxer') %}
+        {% call(name) select(id, name, default='auto') %}
+          {{ select_option('auto', get_json_conf(name), label='Auto') }}
+          {{ select_option('hls', get_json_conf(name), label='HLS') }}
+          {{ select_option('dash', get_json_conf(name), label='DASH') }}
+          {{ select_option('segment', get_json_conf(name), label='Segment') }}
+        {% endcall %}
+        <script>
+            $({{ selector(name) }}).on('change', function () {
+                selectpicker_toggle('hls_segment_number', $(this).val() === 'hls');
+            }).trigger('change');
+        </script>
+      {% endcall %}
+
+      {% call(id, name) form_group(name='hls_segment_number', label='HLS Segment Number') %}
+        {% call(name) select(id, name, default='generic') %}
+          {{ select_option('random', get_json_conf(name), label='Random Number') }}
+          {{ select_option('epoch', get_json_conf(name), label='Epoch Seconds') }}
+          {{ select_option('epoch_us', get_json_conf(name), label='Epoch MicroSeconds') }}
+          {{ select_option('datetime', get_json_conf(name), label='DateTime') }}
+        {% endcall %}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='extra_window_size', label='HLS / DASH Extra Window Size') %}
+        {{ input(id, name, get_json_conf(name), type='number', min=0, default=0) }}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='stream_restart', label='Stream Restart Schedule') %}
+        {{ timer_selectpicker(name) }}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='stream_switch', label='Stream Switch Schedule') %}
+        {{ timer_selectpicker(name) }}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='ip_database', label='IP Database') %}
+        {% call(name) select(id, name, 'required', default='geoip2') %}
+          {{ select_option('ip2location', get_json_conf(name), tags=['IP2Location']) }}
+          {{ select_option('geoip2', get_json_conf(name), tags=['GeoIP2']) }}
+        {% endcall %}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='offline_alert', label='Offline Alert') %}
+        {% call(name) select(id, name, title='\u00a0', default='True') %}
+          {{ select_option('False', get_json_conf(name), label='Disabled') }}
+          {{ select_option('True', get_json_conf(name), label='Enabled') }}
+        {% endcall %}
+      {% endcall %}
+
+      {{ offline_video_option() }}
+
+      {% call(id, name) form_group(name='database_backup', label='Database Backup Schedule') %}
+        {{ timer_selectpicker(name) }}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='backup_script', label='Database Backup Script') %}
+        {{ input(id, name, get_json_conf(name), type='text') }}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='max_backups', label='Database Max Backups',
+                                   tooltip='The max number of automatic backups to be kept in the disk. '
+                                           'The old backups will be deleted.') %}
+        {{ input(id, name, get_json_conf(name), type='number', min=1) }}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='max_worker_memory', label='Max Worker Memory') %}
+        <div class="input-group">
+          {{ input(id, name, get_json_conf(name), 'required', type='number', min=512, max=8192, default=512) }}
+          <span class="input-group-text">MiB</span>
+        </div>
+      {% endcall %}
+
+      {% call(id, name) form_group(name='max_worker_mysql_connections', label='Max Worker MySQL Connections') %}
+        {{ input(id, name, get_json_conf(name), 'required', type='number', min=64, max=1000, default=256) }}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='max_core_mysql_connections', label='Max Core MySQL Connections') %}
+        {{ input(id, name, get_json_conf(name), 'required', type='number', min=64, max=1000, default=128) }}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='drm_provider', label='DRM Provider') %}
+        {% call(name) select(id, name, default='', title='\u00a0') %}
+          {{ select_option('', get_json_conf(name), label='\u00a0') }}
+          {{ select_option('ezdrm', get_json_conf(name), label='EZDRM') }}
+        {% endcall %}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='drm_request_url', label='DRM Request URL') %}
+        {{ input(id, name, get_json_conf(name), type='text') }}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='icy_metadata', label='ICY Metadata') %}
+        {% call(name) select(id, name, title='\u00a0', default='False') %}
+          {{ select_option('False', get_json_conf(name), label='Disabled') }}
+          {{ select_option('True', get_json_conf(name), label='Enabled') }}
+        {% endcall %}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='balancers[]', label='Load Balancers') %}
+        {% call(name) select(id, name, 'multiple', title='\u00a0',
+                         **{'data-actions-box': true, 'data-multiple-separator': ' '}) %}
+          {% for server in get_servers() %}
+            {{ select_option(server.id, get_json_conf(name), tags=[server.name]) }}
+          {% endfor %}
+        {% endcall %}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='country_whitelist[]', label='Country Whitelist') %}
+        {% call(name) select(id, name, 'multiple', title='\u00a0',
+                         **{'data-actions-box': true, 'data-multiple-separator': ' ',
+                            'data-live-search': true, 'data-live-search-placeholder': 'Search'}) %}
+          {% for country in all_countries %}
+            {{ select_option(country.alpha2, get_json_conf(name), tags=[country.name]) }}
+          {% endfor %}
+        {% endcall %}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='referer_whitelist', label='HTTP Referer Whitelist') %}
+        {{ textarea(id, name, (get_json_conf(name) or [])|join('\n'), rows=5) }}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='user_agent_whitelist', label='HTTP User Agent Whitelist') %}
+        {{ textarea(id, name, (get_json_conf(name) or [])|join('\n'), rows=5) }}
+      {% endcall %}
+
+    {% endcall %}
+  {% endcall %}
+{% endblock %}

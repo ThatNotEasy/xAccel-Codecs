@@ -1,0 +1,227 @@
+{% extends "layout.html" %}
+{% from "bootstrap.html" import panel, form, form_group, input, float_group, float_label,
+                                select, select_option, selector, file_browser, colorful_label with context %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+  <div class="card">
+    <div class="card-header">
+      <h6 class="col-md-6 card-title">Series {{ series.name }} - Manage Episodes</h6>
+      <div class="col-md-6 text-right">
+        <button class="btn btn-link mr-3" type="button" onclick="episode_add()">
+          <i class="fa fa-plus-circle text-success"></i>
+        </button>
+        <button class="btn btn-primary" type="button" data-toggle="modal" data-target="#file-browser">
+          Add Episodes
+        </button>
+      </div>
+    </div>
+
+    <div class="table-responsive-sm">
+      <table class="table table-borderless table-vcenter card-table" id="table-episodes">
+        <thead>
+          <tr>
+            <th class="col-2">Server</th>
+            <th class="col-6">Source</th>
+            <th class="col-1">Season</th>
+            <th class="col-1">Episode</th>
+            <th class="col-1">Settings</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for episode in all_episodes %}
+          <tr>
+            <td>
+              <input name="id" value="{{ episode.id }}" type="hidden">
+              <input name="series_id" value="{{ episode.series_id }}" type="hidden">
+
+              {% call(name) select(None, 'server_id', 'disabled', class='selectpicker') %}
+                {% for server in get_servers() %}
+                  {{ select_option(server.id, episode.server_id, tags=[server.name]) }}
+                {% endfor %}
+              {% endcall %}
+            </td>
+            <td>
+              <input class="form-control" name="source" value="{{ episode.source }}" readonly>
+            </td>
+            <td>
+              <input class="form-control" name="season" value="{{ episode.season }}" type="number" min="0" readonly>
+            </td>
+            <td>
+              <input class="form-control" name="episode" value="{{ episode.episode }}" type="number" min="0" readonly>
+            </td>
+            <td>
+              <button type="button" class="btn btn-link episode-edit">
+                <i class="fa fa-edit"></i>
+              </button>
+              <button type="button" class="btn btn-link episode-delete">
+                <i class="fa fa-times text-danger"></i>
+              </button>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {{ file_browser('file-browser', 'file_browser_callback', multiple=True) }}
+
+  <script>
+      var table = $('#table-episodes').DataTable({
+          paging: false,
+          searching: false,
+          info: false,
+          order: [],
+          columnDefs: [
+              {
+                  type: 'input-string',
+                  targets: [1]
+              },
+              {
+                  type: 'input-number',
+                  targets: [0, 2, 3]
+              }
+          ]
+      });
+
+      function file_browser_callback(server_id, files) {
+          for (var i = 0; i < files.length; i++) {
+              episode_add(server_id, files[i]);
+          }
+      }
+      
+      function episode_save() {
+          var row = $(this).closest('tr');
+          var id = $('[name="id"]', row).val();
+          var season = $('[name="season"]', row).val();
+          var episode = $('[name="episode"]', row).val();
+          var error = false;
+
+          $('input:not([name="id"]), select', row).each(function () {
+              if (!$(this).val()) {
+                  error = true;
+                  $(this).parent().addClass('has-error');
+              } else {
+                  $(this).parent().removeClass('has-error');
+              }
+          });
+
+          if (error)
+              return;
+
+          $.ajax({
+              type: 'POST',
+              url: id ? '/episode/' + id + '/settings' : '/episode/add',
+              data: $('input, select', row).serialize(),
+              dataType: 'json',
+              success: function (result) {
+                  if ('error' in result) {
+                      flash_message(result['error']);
+                      return;
+                  }
+
+                  if (!id) {
+                      $('[name="id"]', row).val(result['id']);
+                  }
+
+                  $('[name="server_id"]', row).prop('disabled',  true).selectpicker('refresh');
+                  $('[name="source"]', row).prop('readonly',  true);
+                  $('[name="season"]', row).prop('readonly',  true);
+                  $('[name="episode"]', row).prop('readonly',  true);
+
+                  $('.episode-save > .fa', row).removeClass('spinner-border spinner-border-sm').addClass('fa-edit');
+                  $('.episode-save', row).removeClass('episode-save').addClass('episode-edit').unbind('click').on('click', episode_edit);
+                  flash_message(v.sprintf('Series {{ series.name }} S%dE%02d settings is saved successfully', season, episode), 'success');
+              }
+          });
+
+      }
+
+      function episode_edit() {
+          var row = $(this).closest('tr');
+
+          $('[name="server_id"]', row).prop('disabled',  false).selectpicker('refresh');
+          $('[name="source"]', row).prop('readonly',  false);
+          $('[name="season"]', row).prop('readonly',  false);
+          $('[name="episode"]', row).prop('readonly',  false);
+          $('.episode-edit > .fa', row).removeClass('fa-edit').addClass('fa-check');
+          $('.episode-edit', row).removeClass('episode-edit').addClass('episode-save').unbind('click').on('click', episode_save);
+      }
+
+      function episode_delete() {
+          var row = $(this).closest('tr');
+          var id = $('[name="id"]', row).val();
+          var season = $('[name="season"]', row).val();
+          var episode = $('[name="episode"]', row).val();
+
+          function callback() {
+              $.ajax({
+                  type: 'POST',
+                  url: '/episode/' + id + '/delete',
+                  success: function (result) {
+                      if ('error' in result) {
+                          flash_message(result['error']);
+                      } else if (season && episode) {
+                          flash_message(v.sprintf('Series {{ series.name }} S%dE%02d is deleted successfully', season, episode), 'success');
+                      }
+                  }
+              });
+
+              table.row(row).remove().draw();
+          }
+
+          if (id && season && episode) {
+              confirm_box(v.sprintf('Please confirm to delete the series {{ series.name }} S%dE%02d?', season, episode), callback);
+          } else if (id) {
+              callback();
+          } else {
+              table.row(row).remove().draw();
+          }
+      }
+
+      function episode_add(server_id, source) {
+          server_id = typeof server_id === 'undefined' ? '' : server_id;
+          source = typeof source === 'undefined' ? '' : source;
+
+          var row = $(
+              '<tr>' +
+              '  <td>' +
+              '  <input name="id" type="hidden">' +
+              '  <input name="series_id" value="{{ series.id }}" type="hidden">' +
+              '    <select class="selectpicker" name="server_id">' +
+              {% for server in get_servers() %}
+              '      <option value="{{ server.id }}" data-content="<div class=\'badge\' style=\'{{ colorize(server.name) }}\'>{{ server.name }}</div>"></option>' +
+              {% endfor %}
+              '    </select>' +
+              '  </td>' +
+              '  <td>' +
+              '    <input class="form-control" name="source" required>' +
+              '  </td>' +
+              '  <td>' +
+              '    <input class="form-control" name="season" type="number" min="1" required>' +
+              '  </td>' +
+              '  <td>' +
+              '    <input class="form-control" name="episode" type="number" min="1" required>' +
+              '  </td>' +
+              '  <td>' +
+              '    <button class="btn btn-link episode-save" type="button"><i class="fa fa-check"></i></button>' +
+              '    <button class="btn btn-link episode-delete" type="button"><i class="fa fa-times text-danger"></i></button>' +
+              '  </td>' +
+              '</tr>'
+          );
+
+          $('[name="server_id"]', row).selectpicker().selectpicker('val', server_id);
+          $('[name="source"]', row).val(source);
+
+          $('.episode-save', row).on('click', episode_save);
+          $('.episode-delete', row).on('click', episode_delete);
+
+          table.row.add(row).draw();
+      }
+
+      $('.episode-edit').on('click', episode_edit);
+      $('.episode-delete').on('click', episode_delete);
+  </script>
+{% endblock %}

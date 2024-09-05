@@ -1,0 +1,485 @@
+/* suppress badge transform the text to upper case. */
+.badge {
+    text-transform: none;
+}
+/* remove ugly form-control focus effect */
+.form-control:focus {
+    box-shadow: none;
+}
+
+/* fix the divider label and align problem */
+hr.divider {
+    margin: 1rem 0;
+}
+
+.divider-label {
+    float: left;
+    margin-top: -1rem;
+    font-size: 65%;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+}
+
+.tooltip > .tooltip-inner {
+    max-width: 30em;
+}
+
+/* fix the form-label and tooltip vertical align problem */
+.form-group.row > .form-label > .badge, .form-group.row [data-toggle='tooltip'] {
+    margin-top: 0.5rem;
+}
+
+.form-group {
+    margin-bottom: 1rem;
+}
+
+/* fix the buttons is too large in manage streams page's toolbar pagination dropdown menu */
+.dropdown-menu > .dropdown-item > .input-group > .btn {
+    padding: 0 0.75rem;
+}
+
+.fa {
+    width: 1em;
+    height: 1em;
+}
+
+.fa.text-danger:hover {
+    color: darkred !important;
+}
+
+td .btn-link .fa {
+    font-size: 85%;
+}
+
+/* reduce the padding of btn-link buttons */
+.btn-link {
+    padding: 0.25em;
+}
+
+/* bootstrap-validator.min.js for supports bootstrap 4 */
+.help-block {
+    display: block;
+    margin-top: .25rem;
+    font-size: .875rem;
+    color: #dc3545;
+}
+
+.has-error .help-block {
+    color: #dc3545;
+}
+
+.has-error .col-form-label{
+    color: #dc3545;
+}
+
+.has-error .form-control {
+    border-color: #dc3545;
+    -webkit-box-shadow: inset 0 1px 1px rgba(0,0,0,.075);
+    box-shadow: inset 0 1px 1px rgba(0,0,0,.075);
+}
+
+/* slide effects supports for datatable child rows */
+table tbody tr td.child-row {
+    padding: 0;
+}
+
+/* fix for datatable inside datatable child rows */
+.child-row .card {
+    margin: 1.5rem 0;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.child-row .card thead tr:last-child th {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.child-row .card table {
+    font-size: 80%;
+}
+
+.child-row .card .card-header span {
+    margin-right: 0.5rem;
+    font-size: 80%;
+}
+
+table thead th:focus {
+    outline: none;
+}
+
+table tbody tr.child-row:hover {
+    background-color: unset;
+}
+
+/* fix the display problem of form inside table */
+table tbody tr td form {
+    display: inline !important;
+}
+
+/* fix the width problem with datatable column visible control */
+/*
+table.dataTable {
+    width: inherit !important;
+}*/
+
+/* hide datatable no data available message */
+table.dataTable td.dataTables_empty {
+    display: none;
+}
+
+/* hide datatable search input */
+.dataTables_length, .dataTables_filter, .dataTables_paginate {
+    display: none;
+}
+
+.dataTables_scrollHeadInner, .dataTables_scrollHeadInner > .dataTable {
+    width: inherit !important;
+}
+
+/* datatable row reorder style */
+table.dt-rowReorder-float {
+    position: absolute !important;
+    opacity: 0.8;
+    table-layout: fixed;
+    outline: 1px solid lightskyblue;
+    outline-offset: -2px;
+    z-index: 2001;
+}
+
+tr.dt-rowReorder-moving {
+    outline: 1px solid lightskyblue;
+    outline-offset: -2px;
+}
+
+body.dt-rowReorder-noOverflow {
+    overflow-x: hidden;
+}
+
+table.dataTable td.reorder {
+    text-align: center;
+    cursor: move;
+}
+
+/* fix fontawesome spinner not spin problem. */
+@keyframes spinner {
+    to { transform: rotate(360deg); }
+}
+.fa-spinner {
+    animation: spinner 1.5s linear infinite;
+}
+
+/* side navbar dropdown menu arrow */
+.navbar-vertical.navbar-expand-lg .navbar-collapse .dropdown-toggle:after {
+    border-top: 0.3em solid;
+    border-right: 0.3em solid transparent;
+    border-bottom: 0;
+    border-left: 0.3em solid transparent;
+    transform: none;
+}
+
+.navbar-vertical.navbar-expand-lg .navbar-collapse .dropdown-toggle:hover,
+.navbar-vertical.navbar-expand-lg .navbar-collapse .dropdown-toggle:active,
+.navbar-vertical.navbar-expand-lg .navbar-collapse .dropdown-menu .dropdown-item.active,
+.navbar-vertical.navbar-expand-lg .navbar-collapse .dropdown-menu .dropdown-item:hover {
+    background-color: deeppink;
+    color: inherit;
+    border-radius: 3px;
+}
+
+.navbar-vertical .navbar-collapse .dropdown .dropdown-toggle,
+.navbar-vertical .navbar-collapse .dropdown .dropdown-menu .dropdown-item {
+    font-size: small;
+    font-weight: lighter;
+    text-transform: uppercase;
+}
+
+.theme-light .navbar.navbar-vertical {
+    background: rgb(249,82,202);
+    background: radial-gradient(circle, rgba(249,82,202,1) 0%, rgba(179,19,26,1) 0%, rgba(93,23,85,1) 0%, rgba(236,5,140,1) 100%, rgba(157,23,23,1) 100%, rgba(0,255,126,1) 100%, rgba(0,255,151,1) 100%);
+}
+
+/* fix the bootstrap selectpicker dropdown-menu max-height problem */
+.dropdown-menu.show {
+    max-height: unset !important;
+}
+
+.dropdown-item {
+    min-width: 5ch;
+}
+
+/* fix the bootstrap selectpicker add or remove option button display problem */
+.dropdown-menu li a span.text {
+    width: 100%;
+}
+
+.dropdown-menu li a span.text input {
+    width: 80%;
+    pointer-events: auto;
+    border: 0;
+    outline: none;
+    background-color: inherit;
+    font-size: small;
+}
+
+.dropdown-menu li a span.text button {
+    pointer-events: auto;
+    float: right;
+}
+
+.dropdown .filter-option-inner-inner button.btn-link {
+    display: none;
+}
+
+.page .navbar .navbar-collapse .badge {
+    margin-right: 1rem;
+    width: 20ch;
+}
+
+/* side navbar nav-item border */
+.navbar-vertical .navbar-nav .nav-item.dropdown.show {
+    border-left: 3px solid #226ac0;
+}
+
+.btn:focus, .btn:active {
+    outline: none !important;
+    box-shadow: none !important;
+}
+
+/* break the table column content when it's longer than allowed */
+tr td .badge {
+    word-break: break-word;
+    white-space: initial;
+}
+
+.card-header {
+    padding-top: 5px;
+    padding-bottom: 5px;
+    width: 100%;
+}
+
+.card-header .btn:not(.btn-link) {
+    font-size: 75%;
+}
+
+.text-bold {
+    font-weight: bold;
+}
+
+.flex-box {
+    display: inline-block;
+    width: 16ch;
+    margin: 0 15px 15px 0;
+    text-align: center;
+    border: 1px solid #337ab7;
+    border-radius: 2px;
+}
+
+.flex-box .flex-box-tag {
+    font-size: 75%;
+    float: right;
+    border-radius: 0 2px 0 2px;
+    margin: -1px -1px 0 0;
+    background-color: #337ab7;
+    padding: 0 5px;
+    font-weight: bold;
+}
+
+.modal-header {
+    background-color: #f5f7fb;
+}
+
+/* hide the ugly spinner in Chrome, Safari, Edge, Opera */
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* hide the ugly spinner in Firefox */
+input[type=number] {
+    -moz-appearance: textfield;
+}
+
+.has-float-label > .btn {
+    width: 2rem;
+    height: 2rem;
+    margin-top: -2rem;
+    margin-left: calc(100% - 2rem);
+}
+
+.has-float-label:first-of-type input,
+.has-float-label:first-of-type .dropdown-toggle {
+    border-top-left-radius: 3px !important;
+    border-bottom-left-radius: 3px !important;
+}
+
+/*
+.dropdown.has-btn > .dropdown-toggle {
+    padding-right: 2rem;
+}*/
+
+/* fix for table toolbar's dropdown menu with buttons */
+.dropdown-menu > .dropdown-item > form,
+.dropdown-menu > .dropdown-item .btn {
+    width: 100%;
+    justify-content: start;
+}
+
+.theme-dark .table-hover tbody tr:hover {
+    color: unset;
+}
+
+/* fix for bootstrap-float-label */
+.theme-dark .has-float-label label:after {
+    background-color: #354151;
+}
+
+/* fix for bootstrap-select.js */
+.theme-dark .dropdown .dropdown-toggle.btn-light {
+    border: 1px solid rgba(110, 117, 130, 0.2);
+    background-color: unset;
+    box-shadow: unset !important;
+    padding: 0.375rem 0.75rem;
+}
+
+.theme-dark .dropdown .dropdown-toggle.btn-light:focus {
+    border: 1px solid #7aade9;
+    outline: none !important;
+}
+
+.theme-dark .dropdown.show .dropdown-toggle.btn-light {
+    border-color: #7aade9;
+}
+
+.theme-dark .dropdown .filter-option-inner-inner {
+    color: #f5f7fb;
+}
+
+.theme-dark .dropdown .no-results {
+    background-color: #354052;
+}
+
+.theme-dark .btn.btn-light {
+    color: inherit;
+    background-color: inherit;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.theme-dark .btn.btn-light:hover {
+    background-color: rgba(0, 0, 0, 0.1);
+}
+
+/* fix for input-group-text */
+.theme-dark .input-group .input-group-text {
+    color: inherit;
+}
+
+/* fix placeholder color */
+.theme-dark ::placeholder {
+    color: #f5f7fb;
+}
+
+/* fix for fileinput.js */
+.theme-dark .file-caption-name {
+    padding-left: 0 !important;
+    color: inherit;
+}
+
+/* fix file input mouse pointer */
+.theme-dark input[type=file], /* FF, IE7+, chrome (except button) */
+.theme-dark input[type=file]::-webkit-file-upload-button { /* chromes and blink button */
+    cursor: pointer;
+}
+
+.theme-dark .card-header {
+    border-bottom: 1px solid #2f3a49;
+}
+
+.theme-dark input {
+    color: #f5f7fb;
+}
+
+.theme-dark input:disabled {
+    color: #afb4bd;
+}
+
+/* fix the flatpickr style */
+.theme-dark .numInput {
+    background-color: #354151;
+    color: #ffffff;
+}
+
+.theme-dark .numInput:hover, .theme-dark .numInput:focus {
+    background-color: #354151;
+}
+
+.theme-dark .arrowUp, .theme-dark .arrowUp:hover,
+.theme-dark .arrowDown, .theme-dark .arrowDown:hover {
+    display: none;
+}
+
+.theme-dark .flatpickr-time {
+    border-top: 1px solid #2b3442 !important;
+}
+
+.theme-dark .flatpickr-time-separator {
+    color: #ffffff;
+}
+
+/* fix for bootbox modal */
+.theme-dark .bootbox.modal .modal-dialog .modal-content {
+     box-shadow: 0 3px 15px rgba(0,0,0,0.3);
+}
+
+.theme-dark .mermaid .edgeLabels foreignObject,
+.theme-dark .mermaid .edgeLabels foreignObject .edgeLabel {
+    background-color: #354151 !important;
+    color: #ffffff !important;
+}
+
+.theme-dark .mermaid .edgeLabels rect {
+    fill: #354151 !important;
+}
+
+.theme-light .card-header {
+    background-color: #f5f7fb;
+}
+
+.theme-light .btn.btn-light {
+    background-color: inherit;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.theme-light .btn.btn-light:hover {
+    background-color: rgba(0, 0, 0, 0.1);
+}
+
+/*
+.theme-light .navbar.navbar-vertical, .theme-light .navbar.navbar-expand-md {
+    background-color: #f4f7fb;
+}*/
+
+.theme-dark .nav.nav-tabs .nav-item .nav-link,
+.theme-dark .nav.nav-tabs {
+    border-bottom-color: #2f3949;
+}
+
+.theme-dark .nav.nav-tabs .nav-link.active,
+.theme-dark .nav.nav-tabs .nav-link.show {
+    color: #7a828f !important;
+}
+
+/* fix no bg-* class caused badge text overflow issue */
+.badge {
+    white-space: initial;
+}
+
+.blink {
+    animation: blinker 1s step-start infinite;
+    color: red;
+}
+
+@keyframes blinker {
+  50% {
+    opacity: 0;
+  }
+}

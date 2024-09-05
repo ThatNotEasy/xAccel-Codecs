@@ -1,0 +1,711 @@
+{% extends "layout.html" %}
+{% from "bootstrap.html" import panel, form, form_group, selector, collapse, unique_id, float_label with context %}
+{% from "bootstrap.html" import select, select_option, category_option, input, divider with context %}
+{% from "stream_options.html" import input_options, fflags_option, rate_emulation_option, on_demand_option,
+                                     restart_option, sleep_option, timeshift_option, server_option,
+                                     video_map_option, video_sync_option,
+                                     hwaccel_method_option, hwaccel_device_option,
+                                     video_encoders_option, video_preset_option,
+                                     video_profile_option, video_level_option,
+                                     frame_rate_option, keyframe_interval_option,
+                                     deinterlace_option, display_aspect_ratio_option,
+                                     pixel_format_option, overlay_option, drawtext_option,
+                                     video_delogo_option, video_cvdelogo_option,
+                                     audio_map_option, audio_encoders_option, audio_channels_option,
+                                     audio_sample_rate_option, audio_bitrate_option, audio_volume_option,
+                                     subtitle_map_option, subtitle_encoder_option, subtitle_font_option,
+                                     subtitle_fontsize_option,
+                                     pid_map_option, metadata_option,
+                                     service_id_option, service_name_option, service_provider_option,
+                                     color_range_option, colorspace_option, offline_video_option,
+                                     memory_limit_option, speed_limit_option, fps_limit_option with context %}
+
+{% block title %}{{ title }}{% endblock %}
+
+
+{% macro output_advanced_codec_options(name) %}
+  {% call(id, name) form_group(name='%s.video_encoders[]'|format(name), label='Video Encoders', class='video_codec_option') %}
+    {% call(name) select(id, name, 'multiple', title='\u00a0',
+                         **{'data-actions-box': true, 'data-multiple-separator': ' '}) %}
+    {% endcall %}
+    <script>
+        $({{ selector(name) }}).on('show.bs.select', function (event, value) {
+            var val = Array.isArray(value) ? value : $(this).val().length > 0 ? $(this).val() : ['0'];
+
+            $(this).find('option').remove();
+
+            for(var i= 0; i < 20; i++) {
+                var codec = $('[name="video_encoders[' + i + '].codec"]').val();
+                var size = $('[name="video_encoders[' + i + '].size"]').val();
+                var rc = $('[name="video_encoders[' + i + '].rc"]').val();
+                var bitrate = $('[name="video_encoders[' + i + '].bitrate"]').val();
+                var maxrate = $('[name="video_encoders[' + i + '].maxrate"]').val();
+
+                if (codec && codec !== 'copy') {
+                    var tag = codec_desc(codec);
+                    if (size.match(/(\d+)\s*x\s*(\d+)/))
+                        tag += ' ' + size;
+
+                    if (bitrate || maxrate) {
+                        tag += ' ';
+                        if (bitrate)
+                            tag += bitrate;
+                        if (rc === 'vbr' && maxrate)
+                            tag += '~' + maxrate;
+                        tag += 'kbps';
+                    }
+
+                    $(this).append('<option value="' + i + '" data-content=\'' + colorful_label(tag) + '\'></option>');
+                }
+            }
+
+            if ($(this).find('option').length === 0)
+                $(this).closest('.form-group.row').slideUp();
+
+            $(this).selectpicker('val', val);
+            $(this).selectpicker('refresh');
+        }).trigger('show.bs.select', [{{ get_json_conf(name)|safe }}]);
+    </script>
+  {% endcall %}
+
+  {% call(id, name) form_group(name='%s.audio_encoders[]'|format(name), label='Audio Encoders', class='audio_encoder_options') %}
+    {% call(name) select(id, name, 'multiple', title='\u00a0',
+                         **{'data-actions-box': true, 'data-multiple-separator': ' '}) %}
+    {% endcall %}
+    <script>
+        $({{ selector(name) }}).on('show.bs.select', function (event, value) {
+            var val = Array.isArray(value) ? value : $(this).val().length > 0 ? $(this).val() : ['0'];
+
+            $(this).find('option').remove();
+
+            for(var i= 0; i < 20; i++) {
+                var codec = $('[name="audio_encoders[' + i + '].codec"]').val();
+                var bitrate = $('[name="audio_encoders[' + i + '].bitrate"]').val();
+
+                if (codec && codec !== 'copy') {
+                    var tag = codec_desc(codec);
+                    if (bitrate)
+                        tag += ' ' + bitrate + 'kbps';
+                    $(this).append('<option value="' + i + '" data-content=\'' + colorful_label(tag) + '\'></option>');
+                }
+            }
+
+            if ($(this).find('option').length === 0)
+                $(this).closest('.form-group.row').slideUp();
+
+            $(this).selectpicker('val', val);
+            $(this).selectpicker('refresh');
+        }).trigger('show.bs.select', [{{ get_json_conf(name)|safe }}]);
+    </script>
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro output_localaddr_option(name) %}
+  {% call(id, name) form_group(name=name,
+                               label='Local Address',
+                               class='server_option',
+                               tooltip='The interface used for sending packets or join multicast groups.') %}
+    {% call(name) select(id, name) %}
+      {% for server in get_servers() %}
+        {{ select_option('auto', get_json_conf(name), label='Auto', **{'data-server_id': server.id}) }}
+        {% for k, v in server.interfaces.items() %}
+          {{ select_option(v, get_json_conf(name), label=v, tags=[k], **{'data-server_id': server.id}) }}
+        {% endfor %}
+      {% endfor %}
+    {% endcall %}
+
+    <script>
+        $({{ selector(name) }}).on('change', function () {
+            selectpicker_options_toggle.call(this, ['server_id'], ['auto']);
+        }).trigger('change');
+    </script>
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro output_muxrate_option(name) %}
+  {% call(id, name) form_group(name=name,
+                               label='Muxrate',
+                               tooltip='Set up the constant muxrate. Default is variable muxrate.') %}
+    <div class="input-group">
+      {{ input(id, name, get_json_conf(name), type='number', min=0) }}
+      <span class="input-group-text">kbits/s</span>
+    </div>
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro output_protocol_entry(label, index, url, parent_id) %}
+  {% set collapse_id = unique_id() %}
+
+  <div class="panel">
+    {% call(id, name) form_group(label='Output #%s'|format(index + 1)) %}
+      <div class="input-group">
+        {% call(id, name) float_label(name, label=label.upper()) %}
+          <input class="form-control" id="{{ id }}" value="{{ url }}" readonly>
+        {% endcall %}
+
+          <button class="btn btn-primary" type="button" title="Settings"
+                  data-toggle="collapse"
+                  data-target="#{{ collapse_id }}"
+                  data-parent="#{{ parent_id }}">
+            <i class="fa fa-cog"></i>
+          </button>
+
+          <button class="btn btn-danger" type="button" title="Delete"
+                  onclick="output_{{ index }}_on_delete($(this))">
+            <i class="fa fa-times"></i>
+          </button>
+      </div>
+
+      <script>
+          var output_{{ index }}_on_delete = function (button) {
+              $('#output_{{ index }}_settings').remove();
+              button.closest('.form-group').remove();
+          }
+      </script>
+    {% endcall %}
+
+    <div class="fade collapse" id="{{ collapse_id }}">
+      {{ caller() }}
+    </div>
+  </div>
+{% endmacro %}
+
+
+{% macro form_group_input(name) %}
+  {% set caller_varargs = varargs %}
+  {% set caller_kwargs = kwargs %}
+  {% set label = kwargs.pop('label') if 'label' in kwargs else None %}
+  {% set tooltip = kwargs.pop('tooltip') if 'tooltip' in kwargs else None %}
+
+  {% call(id, name) form_group(None, name, label=label, tooltip=tooltip) %}
+    {{ input(id, name, get_json_conf(name), *caller_varargs, **caller_kwargs) }}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro fieldset(output_id, protocol) %}
+  <fieldset id="output_{{ output_id }}_settings">
+    {% if get_json_conf('outputs[%d].id'|format(output_id)) %}
+      {{ input(none, 'outputs[%d].id'|format(output_id), get_json_conf('outputs[%d].id'|format(output_id)), type='hidden') }}
+    {% endif %}
+    {{ input(none, 'outputs[%d].protocol'|format(output_id), protocol, type='hidden') }}
+    {{ caller(*varargs, **kwargs) }}
+    <br/>
+  </fieldset>
+{% endmacro %}
+
+
+{% macro file_output_settings(output_id) %}
+  {% call fieldset(output_id, 'file', *varargs, **kwargs) %}
+    {{ output_advanced_codec_options('outputs[%d]'|format(output_id)) }}
+    {{ form_group_input('outputs[%d].path'|format(output_id), label='Path',
+                        class='form-control output-required-option', *varargs, **kwargs) }}
+    {{ form_group_input('outputs[%d].filename'|format(output_id), label='Filename',
+                        class='form-control output-required-option',
+                        type='text', pattern='[^/]+\.(ts|mp4|mkv)',
+                        tooltip='Suffix must endswith .mp4, .mkv or .ts for specify the container format. '
+                                'Also you can use {filename} or {time} in this option for generate '
+                                'dynamic filename.',
+                        *varargs, **kwargs) }}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro http_output_settings(output_id) %}
+  {% call fieldset(output_id, 'http', *varargs, **kwargs) %}
+    {{ output_advanced_codec_options('outputs[%d]'|format(output_id)) }}
+    {{ form_group_input('outputs[%d].buffer_size'|format(output_id), label='Buffer Size',
+                        type='number', min=65536, max=33554432, default=1048576,
+                        tooltip='Set the HTTP MPEG-TS output buffer size in bytes. default buffer size is 1 MiB. '
+                                'If the client pull the stream too slow, it will cause the buffer overrun and '
+                                'the stream data may lost. you can increase the buffer size in this case.',
+                        *varargs, **kwargs) }}
+    {{ form_group_input('outputs[%d].filename'|format(output_id), label='Filename',
+                        class='form-control output-required-option',
+                        type='text', pattern='[^\/]+\.(ts|asf)', default='index.ts' if not get_json_conf('outputs') else '',
+                        tooltip='Suffix must endswith .ts or .asf for specify the container format.',
+                        *varargs, **kwargs) }}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro rtmp_output_settings(output_id) %}
+  {% call fieldset(output_id, 'rtmp', *varargs, **kwargs) %}
+    {{ output_advanced_codec_options('outputs[%d]'|format(output_id)) }}
+    {{ form_group_input('outputs[%d].filename'|format(output_id), label='Name',
+                        class='form-control output-required-option',
+                        tooltip='The name should be unique for each RTMP output.',
+                        *varargs, **kwargs) }}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro rtmp_push_output_settings(output_id) %}
+  {% call fieldset(output_id, 'rtmp-push', *varargs, **kwargs) %}
+    {{ output_advanced_codec_options('outputs[%d]'|format(output_id)) }}
+    {{ form_group_input('outputs[%d].url'|format(output_id), label='URL',
+                        class='form-control output-required-option',
+                        type='text', pattern='^(rtmp|rtmps)://.*', *varargs, **kwargs) }}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro rtsp_output_settings(output_id) %}
+  {% call fieldset(output_id, 'rtsp', *varargs, **kwargs) %}
+    {{ output_advanced_codec_options('outputs[%d]'|format(output_id)) }}
+    {{ form_group_input('outputs[%d].hostname'|format(output_id), label='Hostname',
+                        class='form-control output-required-option', *varargs, **kwargs) }}
+    {{ form_group_input('outputs[%d].port'|format(output_id), label='Port',
+                        class='form-control output-required-option',
+                        type='number', min=0, max=65535, *varargs, **kwargs) }}
+    {{ form_group_input('outputs[%d].path'|format(output_id), label='Path',
+                        class='form-control output-required-option', *varargs, **kwargs) }}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro rtp_output_settings(output_id) %}
+  {% call fieldset(output_id, 'rtp', *varargs, **kwargs) %}
+    {{ output_advanced_codec_options('outputs[%d]'|format(output_id)) }}
+    {{ form_group_input('outputs[%d].hostname'|format(output_id), label='Hostname',
+                        class='form-control output-required-option', *varargs, **kwargs) }}
+    {{ form_group_input('outputs[%d].port'|format(output_id), label='Port',
+                        class='form-control output-required-option',
+                        type='number', min=0, max=65535, *varargs, **kwargs) }}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro udp_output_settings(output_id) %}
+  {% call fieldset(output_id, 'udp', *varargs, **kwargs) %}
+    {{ output_advanced_codec_options('outputs[%d]'|format(output_id)) }}
+    {{ form_group_input('outputs[%d].hostname'|format(output_id), label='Hostname',
+                        class='form-control output-required-option', *varargs, **kwargs) }}
+    {{ form_group_input('outputs[%d].port'|format(output_id), label='Port',
+                        class='form-control output-required-option',
+                        type='number', min=0, max=65535, *varargs, **kwargs) }}
+    {{ output_muxrate_option('outputs[%d].muxrate'|format(output_id)) }}
+    {{ output_localaddr_option('outputs[%d].localaddr'|format(output_id)) }}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro tcp_output_settings(output_id) %}
+  {% call fieldset(output_id, 'tcp', *varargs, **kwargs) %}
+    {{ output_advanced_codec_options('outputs[%d]'|format(output_id)) }}
+    {{ form_group_input('outputs[%d].hostname'|format(output_id), label='Hostname',
+                        class='form-control output-required-option',
+                        tooltip='TCP output can working on both push and pull mode. but can only 1 client '
+                                'connected to the stream. also it will wait for the client in pull mode. '
+                                'For pull mode, set the hostname to \'0.0.0.0\', then it will waiting for '
+                                'incoming connection. For push mode, set the hostname to the destination host, '
+                                'and you must have the application is listen on the hostname and port for '
+                                'receving the stream.',
+                        *varargs, **kwargs) }}
+    {{ form_group_input('outputs[%d].port'|format(output_id), label='Port',
+                        class='form-control output-required-option',
+                        type='number', min=0, max=65535, *varargs, **kwargs) }}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro srt_output_settings(output_id) %}
+  {% call fieldset(output_id, 'srt', *varargs, **kwargs) %}
+    {{ output_advanced_codec_options('outputs[%d]'|format(output_id)) }}
+    {{ form_group_input('outputs[%d].url'|format(output_id), label='URL',
+                        class='form-control output-required-option',
+                        type='text', pattern='^srt://.*', *varargs, **kwargs) }}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro dash_output_settings(output_id) %}
+  {% call fieldset(output_id, 'dash', *varargs, **kwargs) %}
+    {{ output_advanced_codec_options('outputs[%d]'|format(output_id)) }}
+    {{ form_group_input('outputs[%d].list_size'|format(output_id), label='Window Size',
+                        type='number', min=5, max=60, default=5,
+                        tooltip='Set the maximum number of segments kept in the manifest.',
+                        *varargs, **kwargs) }}
+    {{ form_group_input('outputs[%d].filename'|format(output_id), label='Filename',
+                        class='form-control output-required-option',
+                        type='text', pattern='[^\/]+\.mpd',
+                        tooltip='The filename must end with suffix .mpd.',
+                        *varargs, **kwargs) }}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro hls_output_settings(output_id) %}
+  {% call fieldset(output_id, 'hls', *varargs, **kwargs) %}
+    {{ output_advanced_codec_options('outputs[%d]'|format(output_id)) }}
+    {{ form_group_input('outputs[%d].time'|format(output_id), label='Time',
+                        type='number', min=2, max=60, default=2,
+                        tooltip='TS segment length in seconds.', *varargs, **kwargs) }}
+    {{ form_group_input('outputs[%d].list_size'|format(output_id), label='List Size',
+                        type='number', min=5, max=60, default=5,
+                        tooltip='Number of ts segments in the playlist',
+                        *varargs, **kwargs) }}
+    {{ form_group_input('outputs[%d].filename'|format(output_id), label='Filename',
+                        class='form-control output-required-option',
+                        type='text', pattern='[^\/]+\.m3u8', default='index.m3u8' if not get_json_conf('outputs') else '',
+                        tooltip='The filename must end with suffix .m3u8.',
+                        *varargs, **kwargs) }}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro hls_master_output_settings(output_id) %}
+  {% call fieldset(output_id, 'hls-master', *varargs, **kwargs) %}
+    {% call(id, name) form_group(name='outputs[%d].variants[]'|format(output_id), label='Variants',
+                                 tooltip='Select the variants that included in the master playlist') %}
+      {% call(name) select(id, name, 'multiple', title='\u00a0', **{'data-multiple-separator': ' '}) %}
+        {% for output in get_json_conf('outputs') or [] %}
+          {% if output['protocol'] == 'hls' %}
+            {{ select_option(output['filename'], get_json_conf(name), tags=[output['filename']]) }}
+          {% endif %}
+        {% endfor %}
+      {% endcall %}
+    {% endcall %}
+
+    {{ form_group_input('outputs[%d].filename'|format(output_id), label='Filename',
+                        class='form-control output-required-option',
+                        type='text', pattern='[^/]+\.m3u8',
+                        tooltip='Specify the master playlist name, and it must end with suffix .m3u8.',
+                        *varargs, **kwargs) }}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro list_all_outputs() %}
+  {% set outputs = get_json_conf('outputs') %}
+  {% if outputs %}
+    {% set parent_id = unique_id() %}
+    <div class="panel-group" id="{{ parent_id }}">
+
+      {% for output in outputs %}
+        {% set protocol = output.get('protocol') %}
+
+        {% if protocol == 'dash' %}
+          {% call output_protocol_entry(protocol, loop.index0, output.url, parent_id) %}
+            {{ dash_output_settings(loop.index0, 'required') }}
+          {% endcall %}
+        {% elif protocol == 'hls' %}
+          {% call output_protocol_entry(protocol, loop.index0, output.url, parent_id) %}
+            {{ hls_output_settings(loop.index0, 'required') }}
+          {% endcall %}
+        {% elif protocol == 'hls-master' %}
+          {% call output_protocol_entry(protocol, loop.index0, output.url, parent_id) %}
+            {{ hls_master_output_settings(loop.index0, 'required') }}
+          {% endcall %}
+        {% elif protocol == 'http' %}
+          {% call output_protocol_entry(protocol, loop.index0, output.url, parent_id) %}
+            {{ http_output_settings(loop.index0, 'required') }}
+          {% endcall %}
+        {% elif protocol == 'rtmp' %}
+          {% call output_protocol_entry(protocol, loop.index0, output.url, parent_id) %}
+            {{ rtmp_output_settings(loop.index0, 'required') }}
+          {% endcall %}
+        {% elif protocol == 'rtmp-push' %}
+          {% call output_protocol_entry(protocol, loop.index0, output.url, parent_id) %}
+            {{ rtmp_push_output_settings(loop.index0, 'required') }}
+          {% endcall %}
+        {% elif protocol == 'rtsp' %}
+          {% call output_protocol_entry(protocol, loop.index0, output.url, parent_id) %}
+            {{ rtsp_output_settings(loop.index0, 'required') }}
+          {% endcall %}
+        {% elif protocol == 'udp' %}
+          {% call output_protocol_entry(protocol, loop.index0, output.url, parent_id) %}
+            {{ udp_output_settings(loop.index0, 'required') }}
+          {% endcall %}
+        {% elif protocol == 'tcp' %}
+          {% call output_protocol_entry(protocol, loop.index0, output.url, parent_id) %}
+            {{ tcp_output_settings(loop.index0, 'required') }}
+          {% endcall %}
+        {% elif protocol == 'rtp' %}
+          {% call output_protocol_entry(protocol, loop.index0, output.url, parent_id) %}
+            {{ rtp_output_settings(loop.index0, 'required') }}
+          {% endcall %}
+        {% elif protocol == 'srt' %}
+          {% call output_protocol_entry(protocol, loop.index0, output.url, parent_id) %}
+            {{ srt_output_settings(loop.index0, 'required') }}
+          {% endcall %}
+        {% elif protocol == 'file' %}
+          {% call output_protocol_entry(protocol, loop.index0, output.url, parent_id) %}
+            {{ file_output_settings(loop.index0, 'required') }}
+          {% endcall %}
+        {% endif %}
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endmacro %}
+
+
+{% macro add_output_option() %}
+  {% set parent_id = unique_id() %}
+  {% set nb_outputs = len(get_json_conf('outputs')) %}
+  <div class="panel-group" id="{{ parent_id }}">
+
+    <div class="panel">
+      {% call(id, name) form_group(name='output-select', label='Add Output') %}
+        {% call(name) select(id, name, default='hls') %}
+          {{ select_option('hls', get_json_conf(name), label='HLS') }}
+          {{ select_option('hls-master', get_json_conf(name), label='HLS-Master') }}
+          {{ select_option('http', get_json_conf(name), label='HTTP') }}
+          {{ select_option('rtmp', get_json_conf(name), label='RTMP') }}
+          {{ select_option('rtmp-push', get_json_conf(name), label='RTMP-Push') }}
+          {{ select_option('dash', get_json_conf(name), label='Dash') }}
+          {{ select_option('rtsp', get_json_conf(name), label='RTSP') }}
+          {{ select_option('rtp', get_json_conf(name), label='RTP') }}
+          {{ select_option('udp', get_json_conf(name), label='UDP') }}
+          {{ select_option('tcp', get_json_conf(name), label='TCP') }}
+          {{ select_option('srt', get_json_conf(name), label='SRT') }}
+          {{ select_option('file', get_json_conf(name), label='FILE') }}
+        {% endcall %}
+      {% endcall %}
+
+      <div id="add_dash_output">
+        {{ dash_output_settings(nb_outputs) }}
+      </div>
+
+      <div id="add_hls_output">
+        {{ hls_output_settings(nb_outputs + 1) }}
+      </div>
+
+      <div id="add_hls-master_output">
+        {{ hls_master_output_settings(nb_outputs + 2) }}
+      </div>
+
+      <div id="add_http_output" style="display: none;">
+        {{ http_output_settings(nb_outputs + 3) }}
+      </div>
+
+      <div id="add_rtmp_output" style="display: none;">
+        {{ rtmp_output_settings(nb_outputs + 4) }}
+      </div>
+
+      <div id="add_rtmp-push_output" style="display: none;">
+        {{ rtmp_push_output_settings(nb_outputs + 5) }}
+      </div>
+
+      <div id="add_rtsp_output" style="display: none;">
+        {{ rtsp_output_settings(nb_outputs + 6) }}
+      </div>
+
+      <div id="add_rtp_output" style="display: none;">
+        {{ rtp_output_settings(nb_outputs + 7) }}
+      </div>
+
+      <div id="add_udp_output" style="display: none;">
+        {{ udp_output_settings(nb_outputs + 8) }}
+      </div>
+
+      <div id="add_tcp_output" style="display: none;">
+        {{ tcp_output_settings(nb_outputs + 9) }}
+      </div>
+
+      <div id="add_srt_output" style="display: none;">
+        {{ srt_output_settings(nb_outputs + 10) }}
+      </div>
+
+      <div id="add_file_output" style="display: none;">
+        {{ file_output_settings(nb_outputs + 11) }}
+      </div>
+
+      <script>
+          $('[name="output-select"]').on('change', function () {
+              $(this).find('option').each(function () {
+                  var div = $(v.sprintf('#add_%s_output', $(this).val()));
+
+                  if ($(this).is(':selected')) {
+                      div.slideDown();
+                  } else {
+                      div.slideUp();
+                  }
+              });
+          }).trigger('change');
+      </script>
+    </div>
+  </div>
+{% endmacro %}
+
+
+{% block content %}
+  <style>
+  .panel-group > .panel {
+    visibility: collapse;
+  }
+
+  .panel-group > .panel > div {
+    visibility: visible;
+  }
+
+  .btn-group > .btn {
+    outline: none !important;
+  }
+
+  .input-group-btn > .btn {
+    outline: none !important;
+  }
+  </style>
+
+  {% call panel(title=title) %}
+    {% call form(request_path or request.path, '/stream/manage', save_actions=True) %}
+      {% call(id, name) form_group(name='id', label='Stream ID') %}
+        {{ input(id, name, get_json_conf(name), type='number') }}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='name', label='Stream Name') %}
+        {{ input(id, name, get_json_conf(name), 'required') }}
+      {% endcall %}
+
+      {{ category_option() }}
+      {{ input_options() }}
+      {{ fflags_option() }}
+      {{ sleep_option() }}
+      {{ timeshift_option() }}
+      {{ restart_option() }}
+      {{ on_demand_option() }}
+      {{ rate_emulation_option() }}
+      <br/>
+      <hr class="divider"/>
+
+      {# TODO: change the stream profile options. exclude the server, GPU option #}
+      {% call(id, name) form_group(name='profile_id', label='Stream Profile') %}
+        {% call(name) select(id, name, title='\u00a0',
+                             **{'data-size': 20,
+                                'data-live-search': true,
+                                'data-live-search-placeholder': 'Search'}) %}
+          {{ select_option('', get_json_conf(name), label='\u00a0') }}
+          {% for profile in get_all_profiles() %}
+            {{ select_option(profile.id|string, get_json_conf(name), label=profile.name, tags=[profile.server_name]) }}
+          {% endfor %}
+        {% endcall %}
+        <script>
+            $(function () {
+                var stream_profile = $({{ selector(name) }});
+
+                stream_profile.on('change', function (object) {
+                    var form = $(this).closest('form');
+                    $('<input>').attr({
+                        'type': 'hidden',
+                        'name': 'apply_profile'
+                    }).val('yes').appendTo(form);
+
+                    form.validator('destroy').submit();
+                });
+
+                $.when(function () {
+                    $({{ selector('video_encoders') }}).trigger('change');
+                    $({{ selector('overlay_filename') }}).trigger('change');
+                    $({{ selector('audio_encoders') }}).trigger('change');
+                }).done(function () {
+                    if (stream_profile.val() !== '') {
+                        $('.stream_profile_option').each(function () {
+                            var form_group = $(this).closest('.form-group.row');
+
+                            $('.selectpicker, input', form_group).each(function () {
+                                var div = $(this).closest('div.col-md-4');
+
+                                $(this).css('cursor', 'not-allowed').prop('disabled', true);
+
+                                if ($(this).selectpicker)
+                                    $(this).selectpicker('refresh');
+
+                                div.on('mouseenter', function () {
+                                    $(this).tooltip({
+                                        container: 'body',
+                                        title: 'This option is disabled because the Stream Profile is selected.'
+                                    }).tooltip('show');
+                                });
+
+                                div.on('mouseleave', function () {
+                                    $(this).tooltip('hide');
+                                });
+                            });
+                        });
+                    }
+                });
+            });
+        </script>
+      {% endcall %}
+
+
+      {{ server_option() }}
+      {{ video_map_option() }}
+      {{ video_sync_option() }}
+      {{ hwaccel_method_option() }}
+      {{ hwaccel_device_option() }}
+      {{ video_encoders_option() }}
+      {{ video_preset_option() }}
+      {{ video_profile_option() }}
+      {{ video_level_option() }}
+      {{ frame_rate_option() }}
+      {{ keyframe_interval_option() }}
+      {{ deinterlace_option() }}
+      {{ pixel_format_option() }}
+      {{ display_aspect_ratio_option() }}
+      {{ overlay_option() }}
+      {{ drawtext_option() }}
+      {{ video_delogo_option() }}
+      {{ video_cvdelogo_option() }}
+
+      <!-- Separate video and audio settings-->
+      <br/>
+      <hr class="divider"/>
+
+      {{ audio_map_option() }}
+      {{ audio_encoders_option() }}
+      {{ audio_channels_option() }}
+      {{ audio_sample_rate_option() }}
+      {{ audio_volume_option() }}
+
+      <br/>
+      <hr class="divider"/>
+
+      {{ subtitle_map_option() }}
+      {{ subtitle_encoder_option() }}
+      {{ subtitle_font_option() }}
+      {{ subtitle_fontsize_option() }}
+
+      <br/>
+      {% call divider('Advanced Options', show=True) %}
+        {{ pid_map_option() }}
+        {{ metadata_option() }}
+        {{ service_id_option() }}
+        {{ service_name_option() }}
+        {{ service_provider_option() }}
+        {{ color_range_option() }}
+        {{ colorspace_option() }}
+        {{ memory_limit_option() }}
+        {{ speed_limit_option() }}
+        {{ fps_limit_option() }}
+        {{ offline_video_option() }}
+
+        <br/>
+        <hr class="divider"/>
+      {% endcall %}
+
+
+      {{ list_all_outputs() }}
+
+      <br/>
+      {{ add_output_option() }}
+
+      <script>
+          /* disable the output that didn't used */
+          $('form').validator().on('submit', function (e) {
+              if (!e.isDefaultPrevented()) {
+                  $('.output-required-option').each(function () {
+                      if (!$(this).val()) {
+                          $(this).closest('fieldset').find('input, select').prop('disabled', true);
+                      }
+                  });
+              }
+          });
+      </script>
+    {% endcall %}
+  {% endcall %}
+{% endblock %}

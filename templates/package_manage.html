@@ -1,0 +1,31 @@
+{% extends "layout.html" %}
+{% from "bootstrap.html" import table with context %}
+
+{% block title %}Manage Packages{% endblock %}
+
+{% block content %}
+  {% call table(columns=['ID', 'Name', 'Price', 'Duration', 'Max Connections', 'Settings']) %}
+    {% for package in packages %}
+      <tr>
+        <td>{{ package.id }}</td>
+        <td><div class="badge bg-primary">{{ package.name }}</div></td>
+        <td>{{ package.price }}</td>
+        <td>{{ '%d %s'|format(package.duration, package.unit|capitalize) }}</td>
+        <td>{{ package.max_connections }}</td>
+        <td>
+          <a href="{{ url_for('package.settings', package=package) }}" class="btn btn-link">
+            <i class="fa fa-cog" title="settings"></i>
+          </a>
+
+          <form action="{{ url_for('package.delete', package=package) }}" method="post">
+            <button type="submit" class="btn btn-link"
+                    data-toggle="confirmation"
+                    data-message="Please confirm to delete the package {{ package.id }} {{ package.name }}?">
+              <i class="fa fa-times text-danger" title="delete"></i>
+            </button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+  {% endcall %}
+{% endblock %}

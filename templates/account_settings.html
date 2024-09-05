@@ -1,0 +1,89 @@
+{% extends "layout.html" %}
+{% from "bootstrap.html" import panel, form, form_group, input, select, select_option with context %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+  {% call panel(title=title) %}
+    {% call form(request.path, url_for('bouquet.manage')) %}
+      {% call(id, name) form_group(name='username', label='Username') %}
+        {{ input(id, name, get_json_conf(name), 'required', maxlength=255) }}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='password', label='Password',
+                                   tooltip='Leave this field empty if you don\'t want to change the password') %}
+        {{ input(id, name, '', 'required' if request.path == url_for('account.add'), type='password', maxlength=255) }}
+
+        {% if request.path != url_for('account.add') %}
+        <script>
+            $('[name="{{ name }}"]').on('keyup', function () {
+                $('[name="confirm_password"]').prop('required', !!$(this).val())
+            }).trigger('keyup');
+        </script>
+        {% endif %}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='confirm_password', label='Confirm Password') %}
+        {{ input(id, name, '', 'required' if request.path == url_for('account.add'), type='password', maxlength=255,
+                 **{'data-match': '[name="password"]', 'data-match-error': 'Password doesn\'t match'}) }}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='email', label='Email') %}
+        {{ input(id, name, get_json_conf(name), maxlength=255) }}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='theme', label='Theme') %}
+        {% call(name) select(id, name, default='light') %}
+          {{ select_option('light', get_json_conf(name), label='Light') }}
+          {{ select_option('dark', get_json_conf(name), label='Dark') }}
+        {% endcall %}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='token', label='API Token',
+                                   tooltip='Leave this field to empty will disable the API access for your account.') %}
+        <div class="input-group">
+          {{ input(id, name, get_json_conf(name), 'readonly', minlength=24, maxlength=24) }}
+          <button type="button" class="btn btn-primary" onclick="document.getElementById('{{ id }}').value = generate_password(24)">
+            <i class="fa fa-redo"></i>
+          </button>
+          <button type="button" class="btn btn-danger" onclick="document.getElementById('{{ id }}').value = ''">
+            <i class="fa fa-times"></i>
+          </button>
+        </div>
+      {% endcall %}
+
+      {% if current_user.id != get_json_conf('id') %}
+        {% call(id, name) form_group(name='role', label='Role') %}
+          {% call(name) select(id, name, 'required', default=['reseller', 'subreseller']) %}
+            {% if current_user.role == 'administrator' %}
+              {{ select_option('reseller', get_json_conf(name), label='Reseller') }}
+              {{ select_option('subreseller', get_json_conf(name), label='Sub Reseller') }}
+            {% elif current_user.role == 'reseller' %}
+              {{ select_option('subreseller', get_json_conf(name), label='Sub Reseller') }}
+            {% endif %}
+          {% endcall %}
+        {% endcall %}
+
+        {% if current_user.role == 'administrator' or current_user.id == get_json_conf('owner') %}
+          {% call(id, name) form_group(name='credits', label='Credits') %}
+            {{ input(id, '', get_json_conf(name), 'required', 'disabled', type='number', min=0, default='0') }}
+          {% endcall %}
+
+          {% call(id, name) form_group(name='credits', label='Credits Transfer',
+                                       tooltip='The number of credits to be transferred.') %}
+            {{ input(id, name, '', type='number',
+                     min=-(get_json_conf(name) or 0),
+                     max=current_user.credits if current_user.role == 'reseller' else 1000000) }}
+          {% endcall %}
+        {% endif %}
+
+        {% if current_user.role == 'administrator' or current_user.id == get_json_conf('owner') %}
+          {% call(id, name) form_group(name='note', label='Note') %}
+            <textarea class="form-control" name="{{ name }}" rows="5">{{ get_json_conf(name) or '' }}</textarea>
+          {% endcall %}
+        {% endif %}
+      {% endif %}
+
+    {% endcall %}
+  {% endcall %}
+{% endblock %}

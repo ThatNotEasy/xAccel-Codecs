@@ -1,0 +1,211 @@
+{% extends "layout.html" %}
+{% from "bootstrap.html" import colorful_label, table with context %}
+
+{% block title %}Manage Users{% endblock %}
+
+{% block content %}
+  <script>
+      var users = [
+      {% for user in users %}
+          '<tr data-target="user" data-name="{{ user.username }}">' +
+          '  <td>{{ user.id }}</td>' +
+          '  <td><div class="badge bg-primary">{{ user.username }}</div></td>' +
+          '  <td>{{ user.password }}</td>' +
+          '  <td>{{ user.package_name or '' }}</td>' +
+          '  <td>{{ user.expire_date }}</td>' +
+          '  <td>{{ user.connections }} / {{ user.max_connections }}</td>' +
+          '  <td data-sort="{{ user.access_time }}">{{ user.last_active }}</td>' +
+          '  <td>{{ colorful_label(user.owner_name) }}</td>' +
+          '  <td>' +
+      {% if user.connections > 0 %}
+          '    <div class="badge bg-green-lt">Connected</div>' +
+      {% elif datetime.now() >= user.expire_date %}
+          '    <div class="badge bg-red-lt">Expired</div>' +
+      {% else %}
+          '    <div class="badge bg-gray-lt">Inactive</div>' +
+      {% endif %}
+          '  </td>' +
+          '  <td>' +
+          '    <button type="button" class="btn btn-link"' +
+          '            onclick="modal_playlist({{'%d, \\\'%s\\\', \\\'%s\\\''|format(user.id, user.username, user.password)|safe}})">' +
+          '      <i class="fa fa-arrow-circle-down"></i>' +
+          '    </button>' +
+
+          '    <a href="{{ url_for('user.settings', user=user) }}" class="btn btn-link">' +
+          '      <i class="fa fa-cog" title="settings"></i>' +
+          '    </a>' +
+
+          '    <form action="{{ url_for('user.delete', user=user) }}" method="post">' +
+          '      <button type="submit" class="btn btn-link"' +
+          '              data-toggle="confirmation"' +
+          '              data-message="Please confirm to delete the user {{ user.id }} {{ users.username }}?">' +
+          '        <i class="fa fa-times text-danger" title="delete"></i>' +
+          '      </button>' +
+          '    </form>' +
+          '  </td>' +
+          '</tr>'{% if not loop.last %},{% endif %}
+      {% endfor %}
+      ];
+  </script>
+  {% call table(columns=['ID', 'Username', 'Password', 'Package', 'Expire Date', 'Connections', 'Last Active',
+                         'Owner', 'Status', 'Settings'], disabled=[3], data='users') %}
+    {#
+    {% for user in users %}
+      <tr>
+        <td>{{ user.id }}</td>
+        <td><div class="badge bg-primary">{{ user.username }}</div></td>
+        <td>{{ user.password }}</td>
+        <td>{{ user.package_name or '' }}</td>
+        <td>{{ user.expire_date }}</td>
+        <td>{{ user.connections }} / {{ user.max_connections }}</td>
+        <td data-sort="{{ user.access_time }}">{{ user.last_active }}</td>
+        <td>{{ colorful_label(user.owner_name) }}</td>
+        <td>
+          {% if user.connections > 0 %}
+            <div class="badge bg-green-lt">Connected</div>
+          {% elif datetime.now() >= user.expire_date %}
+            <div class="badge bg-red-lt">Expired</div>
+          {% else %}
+            <div class="badge bg-gray-lt">Inactive</div>
+          {% endif %}
+        </td>
+        <td>
+          <button type="button" class="btn btn-link"
+                  onclick="modal_playlist({{'%d, "%s", "%s"'|format(user.id, user.username, user.password)}})">
+            <i class="fa fa-arrow-circle-down"></i>
+          </button>
+
+          <a href="{{ url_for('user.settings', user=user) }}" class="btn btn-link">
+            <i class="fa fa-cog" title="settings"></i>
+          </a>
+
+          <form action="{{ url_for('user.delete', user=user) }}" method="post">
+            <button type="submit" class="btn btn-link"
+                    data-toggle="confirmation"
+                    data-message="Please confirm to delete the user {{ user.id }} {{ users.username }}?">
+              <i class="fa fa-times text-danger" title="delete"></i>
+            </button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    #}
+  {% endcall %}
+
+  <div class="modal fade hide" id="modal-playlist" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Playlist Download</h5>
+          <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+            <i class="fa fa-times"></i>
+          </button>
+        </div>
+
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label col-form-label">Attributes</label>
+            <div>
+              <label class="form-check form-switch form-check-inline">
+                <input name="attributes" value="tvg-id" type="checkbox" class="form-check-input" checked>
+                <span class="form-check-label">TVG-ID</span>
+              </label>
+
+              <label class="form-check form-switch form-check-inline">
+                <input name="attributes" value="tvg-name" type="checkbox" class="form-check-input" checked>
+                <span class="form-check-label">TVG-NAME</span>
+              </label>
+
+              <label class="form-check form-switch form-check-inline">
+                <input name="attributes" value="group-title" type="checkbox" class="form-check-input" checked>
+                <span class="form-check-label">GROUP TITLE</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <div class="form-label">Protocol</div>
+            <div>
+              <label class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="protocol" value="hls" checked>
+                <span class="form-check-label">HLS</span>
+              </label>
+              <label class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="protocol" value="http">
+                <span class="form-check-label">HTTP-TS</span>
+              </label>
+              <label class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="protocol" value="rtmp">
+                <span class="form-check-label">RTMP</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <div class="form-label">URL</div>
+            <div class="input-group mb-2">
+              <input class="form-control" id="playlist">
+              <button class="btn btn-secondary" data-clipboard-target="#playlist">Copy</button>
+              <a class="btn btn-secondary" href='#' id="playlist-download">Download</a>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <div class="form-label">EPG</div>
+            <div class="input-group mb-2">
+              <input class="form-control" id="epg">
+              <button class="btn btn-secondary" data-clipboard-target="#epg">Copy</button>
+              <a class="btn btn-secondary" href="#" id="epg-download">Download</a>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+      function modal_playlist(user_id, username, password) {
+          var modal = $('#modal-playlist');
+
+          modal.data('user-id', user_id);
+          modal.data('username', encodeURIComponent(username));
+          modal.data('password', encodeURIComponent(password));
+
+          $('[name="protocol"][value="hls"]').prop('checked', true).trigger('change');
+
+          modal.modal('show');
+      }
+
+      $('[name="protocol"], [name="attributes"]').on('change', function () {
+          var modal = $('#modal-playlist');
+          var playlist = $('#playlist');
+          var epg = $('#epg');
+          var url = window.location.origin + '/stream/playlist?' +
+                       'username=' + modal.data('username') + '&' +
+                       'password=' + modal.data('password');
+
+          if ($('[name="attributes"][value="tvg-id"]').is(':checked'))
+              url += '&attributes=tvg-id';
+          if ($('[name="attributes"][value="tvg-name"]').is(':checked'))
+              url += '&attributes=tvg-name';
+          if ($('[name="attributes"][value="group-title"]').is(':checked'))
+              url += '&attributes=group-title';
+
+          if ($('[name="protocol"][value="hls"]').is(':checked'))
+              url += '&protocol=hls';
+          else if ($('[name="protocol"][value="http"]').is(':checked'))
+              url += '&protocol=http';
+          else if ($('[name="protocol"][value="rtmp"]').is(':checked'))
+              url += '&protocol=rtmp';
+
+          playlist.val(url);
+          $('#playlist-download').prop('href', playlist.val());
+
+          epg.val(window.location.origin + '/stream/epg/epg.xml?' +
+                  'username=' + modal.data('username') + '&' +
+                  'password=' + modal.data('password'));
+          $('#epg-download').prop('href', epg.val());
+      });
+  </script>
+{% endblock %}

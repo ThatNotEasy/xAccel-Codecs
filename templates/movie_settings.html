@@ -1,0 +1,57 @@
+{% extends "layout.html" %}
+{% from "bootstrap.html" import panel, form, form_group, input, select, select_option, selector, category_option, file_browser with context %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+  {% call panel(title=title) %}
+    {% call form(request.path, url_for('movie.manage')) %}
+      {% call(id, name) form_group(name='name', label='Name') %}
+        {{ input(id, name, get_json_conf(name), 'required') }}
+      {% endcall %}
+
+      {{ category_option() }}
+
+      {% call(id, name) form_group(name='server_id', label='Server') %}
+        {% call(name) select(id, name, 'required') %}
+          {% for server in get_servers() %}
+            {{ select_option(server.id, get_json_conf(name), tags=[server.name]) }}
+          {% endfor %}
+        {% endcall %}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='source', label='Source') %}
+        <div class="input-group">
+          {{ input(id, name, get_json_conf(name)) }}
+
+          <button class="btn btn-primary" type="button" data-toggle="modal" data-target="#file-browser">
+            <i class="fa fa-folder-open"></i>
+          </button>
+
+          {{ file_browser('file-browser', 'file_browser_callback') }}
+          <script>
+              function file_browser_callback(server_id, files) {
+                  $('[name="server_id"]').selectpicker('val', server_id);
+
+                  if (files.length > 0) {
+                      $('[name="source"]').val(files.pop());
+                  }
+              }
+          </script>
+        </div>
+      {% endcall %}
+
+    {% endcall %}
+  {% endcall %}
+{% endblock %}
+
+
+<div class="form-selectgroup">
+  <label class="form-selectgroup-item">
+    <input type="radio" name="icons" value="home" class="form-selectgroup-input" checked="">
+    <span class="form-selectgroup-label">
+      <i class="fa fa-folder"></i>
+      Home
+    </span>
+  </label>
+</div>

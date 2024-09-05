@@ -1,0 +1,36 @@
+{% extends "layout.html" %}
+{% from "bootstrap.html" import colorful_label, table with context %}
+
+{% block title %}Manage Series{% endblock %}
+
+{% block content %}
+  {% call table(columns=['ID', 'Name', 'Category', 'Seasons', 'Episodes', 'Connections', 'Settings']) %}
+    {% for series in all_series %}
+      <tr>
+        <td>{{ series.id }}</td>
+        <td><div class="badge bg-primary">{{ series.name }}</div></td>
+        <td>{{ colorful_label(series.category or '') }}</td>
+        <td>{{ series.seasons }}</td>
+        <td>{{ series.episodes }}</td>
+        <td>{{ series.connections }}</td>
+        <td>
+          <a href="{{ url_for('series.episode_manage', series=series) }}" class="btn btn-link">
+            <i class="fa fa-list-ul" title="settings"></i>
+          </a>
+
+          <a href="{{ url_for('series.settings', series=series) }}" class="btn btn-link">
+            <i class="fa fa-cog" title="settings"></i>
+          </a>
+
+          <form action="{{ url_for('series.delete', series=series) }}" method="post">
+            <button type="submit" class="btn btn-link"
+                    data-toggle="confirmation"
+                    data-message="Please confirm to delete the series {{ series.id }} {{ series.name }}?">
+              <i class="fa fa-times text-danger" title="delete"></i>
+            </button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+  {% endcall %}
+{% endblock %}

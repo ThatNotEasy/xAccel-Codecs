@@ -1,0 +1,641 @@
+{% extends "layout.html" %}
+
+{% from "bootstrap.html" import colorful_label with context %}
+
+{% block title %}System Info{% endblock %}
+
+{% block script %}
+  <!--suppress ALL -->
+  <script src="/static/js/moment.min.js"></script>
+  <script src="/static/js/Chart.min.js"></script>
+  <script src="/static/js/chartjs-plugin-streaming.min.js"></script>
+{% endblock %}
+
+{% block content %}
+  <script>
+      /* sysinfo is used to store the server-send system info, and it
+       * will be updated for every 500 ms periodically.
+       * */
+      var realtime_tick = {
+          type: 'realtime'
+      };
+      var percent_tick = {
+          display: true,
+          position: 'left',
+          ticks: {
+              beginAtZero: true,
+              min: 0,
+              max: 100,
+              callback: function (value, index, values) {
+                  return v.sprintf('%3d%%', value);
+              }
+          }
+      };
+      var celsius_tick = {
+          display: true,
+          position: 'right',
+          ticks: {
+              beginAtZero: true,
+              min: 0,
+              max: 100,
+              callback: function (value, index, values) {
+                  return v.sprintf('%3d°C', value);
+              }
+          }
+      };
+      var speed_tick = {
+          display: true,
+          ticks: {
+              beginAtZero: true,
+              min: 0,
+              callback: function (value, index, values) {
+                  return net_speed_desc(value);
+              }
+          }
+      };
+
+      /* Make chartjs responsive to true and disable maintain aspect ratio. */
+      Chart.defaults.global.responsive = true;
+      Chart.defaults.global.maintainAspectRatio = false;
+
+      /* Chart.defaults.global.defaultFontSize = 12; */
+      /* Chart.defaults.global.defaultFontColor = 'green'; */
+      /* Chart.defaults.global.legend.position = 'bottom'; */
+
+      Chart.defaults.global.plugins.streaming = {
+          duration: 60000,
+          refresh: 1000,
+          delay: 5000
+      };
+
+      function chart_new(id, options) {
+          var ctx = document.getElementById(id).getContext('2d');
+          var chart = document.getElementById(id);
+          if (chart.width / chart.height > 1.5)
+              chart.height = chart.width / 1.5;
+
+          return new Chart(ctx, options);
+      }
+
+      function line_chart_datasets_push(datasets, label, data) {
+          return datasets.push({
+              label: label,
+              fill: false,
+              borderWidth: 1,
+              borderColor: random_color(),
+              pointRadius: 0,
+              data: data
+          });
+      }
+
+      /* CPU usage canvas chartjs initialization function. */
+      function cpu_usage_chart_new(canvas_id) {
+          var cpu_usage_history = [];
+
+          var get_cpu_label = function (cpu_id, percent) {
+              return v.sprintf('CPU%-2d %3d%%', cpu_id, percent);
+          }
+
+          var get_cpu_usage_history = function () {
+              return $.ajax({
+                  url: "{{ url_for('server.cpu_usage_history', server_id=server.id) }}",
+                  success: function (history) {
+                      cpu_usage_history = history;
+                  }
+              });
+          }
+
+          var cpu_usage_on_refresh = function (chart) {
+              $.ajax({
+                  url: "{{ url_for('server.cpu_usage', server_id=server.id) }}",
+                  success: function (cpu_usage) {
+                      cpu_usage.percent_percpu.forEach(function (percent, index) {
+                          chart.data.datasets[index].label = get_cpu_label(index, percent);
+                          chart.data.datasets[index].data.push({x: cpu_usage.timestamp, y: percent});
+                      });
+
+                      $('#cpu-percent').html(v.sprintf('CPU: %3.1f%%', cpu_usage.percent));
+                      $('#cpu-temperature').html(v.sprintf('Temperature: %3.1f°C', cpu_usage.temperature));
+                      $('#cpu-frequency').html(v.sprintf('Frequency: %5.1fMHz', cpu_usage.frequency));
+                  }
+              });
+          }
+
+          $.when(get_cpu_usage_history()).done(function () {
+              var datasets = [];
+
+              var canvas = $('#' + canvas_id);
+              var container = canvas.closest('div');
+              var cpu_count = cpu_usage_history[0].percent_percpu.length;
+              canvas.height(180 + 20 * (cpu_count / (container.width() / 150)));
+
+              for (var cpu_id = 0; cpu_id < cpu_usage_history[0].percent_percpu.length; cpu_id++) {
+                  var data = [];
+                  var last_percent = 0;
+
+                  cpu_usage_history.forEach(function (cpu_usage) {
+                      cpu_usage.percent_percpu.forEach(function (percent, index) {
+                          if (cpu_id === index) {
+                              data.push({
+                                  x: cpu_usage.timestamp,
+                                  y: percent
+                              });
+
+                              last_percent = percent;
+                          }
+                      });
+                  });
+
+                  line_chart_datasets_push(datasets, get_cpu_label(cpu_id, last_percent), data);
+              }
+
+              chart_new(canvas_id, {
+                  type: 'line',
+                  data: {
+                      datasets: datasets
+                  },
+                  options: {
+                      scales: {
+                          xAxes: [realtime_tick],
+                          yAxes: [percent_tick]
+                      },
+                      plugins: {
+                          streaming: {
+                              onRefresh: cpu_usage_on_refresh
+                          }
+                      }
+                  }
+              });
+          });
+      }
+
+      /* Memory usage canvas chartjs initialization function. */
+      function memory_usage_chart_new(canvas_id) {
+          var memory_usage_history = [];
+
+          var get_memory_label = function (memory_usage) {
+              if (!memory_usage)
+                  return 'Mem';
+
+              return v.sprintf('Mem  %4.1f%% %5.2f GiB / %5.2f GiB',
+                               memory_usage.mem_used / memory_usage.mem_total * 100,
+                               memory_usage.mem_used / (1 << 30),
+                               memory_usage.mem_total / (1 << 30));
+          }
+
+          var get_swap_label = function (swap_usage) {
+              if (!swap_usage)
+                  return 'Swap';
+
+              return v.sprintf('Swap %4.1f%% %5.2f GiB / %5.2f GiB',
+                               swap_usage.swap_used / swap_usage.swap_total * 100,
+                               swap_usage.swap_used / (1 << 30),
+                               swap_usage.swap_total / (1 << 30));
+          }
+
+          var get_memory_usage_history = function () {
+              return $.ajax({
+                  url: "{{ url_for('server.memory_usage_history', server_id=server.id) }}",
+                  success: function (history) {
+                      memory_usage_history = history;
+                  }
+              });
+          }
+
+          var memory_usage_on_refresh = function (chart) {
+              $.ajax({
+                  url: "{{ url_for('server.memory_usage', server_id=server.id) }}",
+                  success: function (memory_usage) {
+                      chart.data.datasets[0].label = get_memory_label(memory_usage);
+                      chart.data.datasets[0].data.push({x: memory_usage.timestamp, y: memory_usage.mem_used / memory_usage.mem_total * 100});
+                      chart.data.datasets[1].label = get_swap_label(memory_usage);
+                      chart.data.datasets[1].data.push({x: memory_usage.timestamp, y: memory_usage.swap_used / memory_usage.swap_total * 100});
+                  }
+              });
+          }
+
+          $.when(get_memory_usage_history()).done(function () {
+              var datasets = [];
+              var memory_usage_data = [];
+              var swap_usage_data = [];
+
+              memory_usage_history.forEach(function (memory_usage) {
+                  memory_usage_data.push({x: memory_usage.timestamp, y: memory_usage.mem_used / memory_usage.mem_total * 100});
+                  swap_usage_data.push({x: memory_usage.timestamp, y: memory_usage.swap_used / memory_usage.swap_total * 100});
+              });
+
+              line_chart_datasets_push(datasets, get_memory_label(memory_usage_history.slice(-1)[0]), memory_usage_data);
+              line_chart_datasets_push(datasets, get_swap_label(memory_usage_history.slice(-1)[0]), swap_usage_data);
+
+              chart_new(canvas_id, {
+                  type: 'line',
+                  data: {
+                      datasets: datasets
+                  },
+                  options: {
+                      scales: {
+                          xAxes: [realtime_tick],
+                          yAxes: [percent_tick]
+                      },
+                      plugins: {
+                          streaming: {
+                              onRefresh: memory_usage_on_refresh
+                          }
+                      }
+                  }
+              });
+          });
+      }
+
+      /* Network usage canvas chartjs initialization function. */
+      function network_usage_chart_new(canvas_id) {
+          var network_usage_history = [];
+
+          var get_send_label = function (network_usage) {
+              if (!network_usage)
+                  return 'Send';
+
+              var speed = net_speed_desc(network_usage.send_bps);
+              var traffic = network_usage.send_bytes / (1 << 30);
+              return v.sprintf('Send %s %6.2f GiB', speed, traffic);
+          }
+
+          var get_recv_label = function(network_usage) {
+              if (!network_usage)
+                  return 'Recv';
+
+              var speed = net_speed_desc(network_usage.recv_bps);
+              var traffic = network_usage.recv_bytes / (1 << 30);
+              return v.sprintf('Recv %s %6.2f GiB', speed, traffic);
+          }
+
+          var get_network_usage_history = function () {
+              return $.ajax({
+                  url: "{{ url_for('server.network_usage_history', server_id=server.id) }}",
+                  success: function (history) {
+                      network_usage_history = history;
+                  }
+              });
+          }
+
+          var network_usage_on_refresh = function (chart) {
+              $.ajax({
+                  url: "{{ url_for('server.network_usage', server_id=server.id) }}",
+                  success: function (network_usage) {
+                      chart.data.datasets[0].label = get_send_label(network_usage);
+                      chart.data.datasets[0].data.push({x: network_usage.timestamp, y: network_usage.send_bps});
+                      chart.data.datasets[1].label = get_recv_label(network_usage);
+                      chart.data.datasets[1].data.push({x: network_usage.timestamp, y: network_usage.recv_bps});
+                  }
+              });
+          }
+
+          $.when(get_network_usage_history()).done(function () {
+              var datasets = [];
+              var send_usage_data = [];
+              var recv_usage_data = [];
+
+              network_usage_history.forEach(function (network_usage) {
+                  send_usage_data.push({x: network_usage.timestamp, y: network_usage.send_bps});
+                  recv_usage_data.push({x: network_usage.timestamp, y: network_usage.recv_bps});
+              });
+
+              line_chart_datasets_push(datasets, get_send_label(network_usage_history.slice(-1)[0]), send_usage_data);
+              line_chart_datasets_push(datasets, get_recv_label(network_usage_history.slice(-1)[0]), recv_usage_data);
+
+              chart_new(canvas_id, {
+                  type: 'line',
+                  data: {
+                      datasets: datasets
+                  },
+                  options: {
+                      scales: {
+                          xAxes: [realtime_tick],
+                          yAxes: [speed_tick]
+                      },
+                      plugins: {
+                          streaming: {
+                              onRefresh: network_usage_on_refresh
+                          }
+                      }
+                  }
+              });
+          });
+      }
+
+      /* Intel GPU usage canvas chartjs initialization function. */
+      function intel_gpu_chart_new(canvas_id, stream_stats_url) {
+          var intel_gpu_usage_history = [];
+
+          var get_render_label = function (gpu_usage) {
+              return v.sprintf('Render %3d%%', gpu_usage.render);
+          }
+
+          var get_video_label = function (gpu_usage) {
+              return v.sprintf('Video %3d%%', gpu_usage.video);
+          }
+
+          var get_video_enhance_label = function (gpu_usage) {
+              return v.sprintf('Video Enhance %d%%', gpu_usage.video_enhance)
+          }
+
+          var get_intel_gpu_usage_history = function () {
+              return $.ajax({
+                  url: "{{ url_for('server.intel_gpu_usage_history', server_id=server.id) }}",
+                  success: function (history) {
+                      intel_gpu_usage_history = history;
+                  }
+              });
+          }
+
+          var intel_gpu_usage_on_refresh = function (chart) {
+              $.ajax({
+                  url: "{{ url_for('server.intel_gpu_usage', server_id=server.id) }}",
+                  success: function (gpu_usage) {
+                      if (!gpu_usage)
+                          return;
+
+                      chart.data.datasets[0].label = get_render_label(gpu_usage);
+                      chart.data.datasets[0].data.push({x: gpu_usage.timestamp, y: gpu_usage.render});
+
+                      chart.data.datasets[1].label = get_video_label(gpu_usage);
+                      chart.data.datasets[1].data.push({x: gpu_usage.timestamp, y: gpu_usage.video});
+
+                      chart.data.datasets[2].label = get_video_enhance_label(gpu_usage);
+                      chart.data.datasets[2].data.push({x: gpu_usage.timestamp, y: gpu_usage.video_enhance});
+                  }
+              });
+          }
+
+          $.when(get_intel_gpu_usage_history()).done(function () {
+              var datasets = [];
+              var render_usage_data = [];
+              var video_usage_data = [];
+              var video_enhance_usage_data = [];
+
+              intel_gpu_usage_history.forEach(function (gpu_usage) {
+                  render_usage_data.push({x: gpu_usage.timestamp, y: gpu_usage.render});
+                  video_usage_data.push({x: gpu_usage.timestamp, y: gpu_usage.video});
+                  video_enhance_usage_data.push({x: gpu_usage.timestamp, y: gpu_usage.video_enhance});
+              });
+
+              line_chart_datasets_push(datasets, get_render_label(intel_gpu_usage_history.slice(-1)[0]), render_usage_data);
+              line_chart_datasets_push(datasets, get_video_label(intel_gpu_usage_history.slice(-1)[0]), video_usage_data);
+              line_chart_datasets_push(datasets, get_video_enhance_label(intel_gpu_usage_history.slice(-1)[0]), video_enhance_usage_data);
+
+              chart_new(canvas_id, {
+                  type: 'line',
+                  data: {
+                      datasets: datasets
+                  },
+                  options: {
+                      scales: {
+                          xAxes: [realtime_tick],
+                          yAxes: [percent_tick]
+                      },
+                      plugins: {
+                          streaming: {
+                              refresh: 1000,
+                              onRefresh: intel_gpu_usage_on_refresh
+                          }
+                      }
+                  }
+              });
+
+              setInterval(function () {
+                  $.ajax({
+                      url: stream_stats_url,
+                      success: function (result) {
+                          var chart = $('#' + canvas_id).closest('.card').find('.card-header');
+
+                          $('.stream-stats-total', chart).html(v.sprintf('Total: %d', result['total']));
+                          $('.stream-stats-starting', chart).html(v.sprintf('Starting: %d', result['starting']));
+                          $('.stream-stats-running', chart).html(v.sprintf('Running: %d', result['running']));
+                          $('.stream-stats-restarting', chart).html(v.sprintf('Restarting: %d', result['restarting']));
+                          $('.stream-stats-sleeping', chart).html(v.sprintf('Sleeping: %d', result['sleeping']));
+                          $('.stream-stats-stopped', chart).html(v.sprintf('Stopped: %d', result['stopped']));
+                      }
+                  });
+              }, 1000);
+          });
+      }
+
+      /* Nvidia GPU usage canvas chartjs initialization function. */
+      function nvidia_gpu_chart_new(canvas_id, usage_url, usage_history_url, stream_stats_url) {
+          var nvidia_gpu_usage_history = [];
+
+          var get_gpu_mem_label = function (gpu_usage) {
+              /* Convert mem_used and mem_total from MiB to GiB. */
+              return v.sprintf('Mem %3d%% %5.2f GiB / %5.2f GiB',
+                               gpu_usage.mem_used * 100 / gpu_usage.mem_total,
+                               gpu_usage.mem_used / (1 << 10),
+                               gpu_usage.mem_total / (1 << 10));
+          }
+
+          var get_gpu_enc_label = function (gpu_usage) {
+              return v.sprintf('Enc %3d%%', gpu_usage.enc);
+          }
+
+          var get_gpu_dec_label = function (gpu_usage) {
+              return v.sprintf('Dec %3d%%', gpu_usage.dec);
+          }
+
+          var get_gpu_gtemp_label = function (gpu_usage) {
+              return v.sprintf('Temperature %d°C', gpu_usage.gtemp)
+          }
+
+          var get_nvidia_gpu_usage_history = function () {
+              return $.ajax({
+                  url: usage_history_url,
+                  success: function (result) {
+                      nvidia_gpu_usage_history = result;
+                  }
+              });
+          }
+
+          var gpu_usage_on_refresh = function (chart) {
+              $.ajax({
+                  url: usage_url,
+                  success: function (gpu_usage) {
+                      if (!gpu_usage)
+                          return;
+
+                      chart.data.datasets[0].label = get_gpu_mem_label(gpu_usage);
+                      chart.data.datasets[0].data.push({x: gpu_usage.timestamp, y: gpu_usage.mem_used * 100 / gpu_usage.mem_total});
+
+                      chart.data.datasets[1].label = get_gpu_enc_label(gpu_usage);
+                      chart.data.datasets[1].data.push({x: gpu_usage.timestamp, y: gpu_usage.enc});
+
+                      chart.data.datasets[2].label = get_gpu_dec_label(gpu_usage);
+                      chart.data.datasets[2].data.push({x: gpu_usage.timestamp, y: gpu_usage.dec});
+
+                      chart.data.datasets[3].label = get_gpu_gtemp_label(gpu_usage);
+                      chart.data.datasets[3].data.push({x: gpu_usage.timestamp, y: gpu_usage.gtemp});
+                  }
+              });
+          }
+
+          $.when(get_nvidia_gpu_usage_history()).done(function () {
+              var datasets = [];
+              var mem_percent_data = [];
+              var enc_percent_data = [];
+              var dec_percent_data = [];
+              var gtemp_celsius_data = [];
+
+              nvidia_gpu_usage_history.forEach(function (gpu_usage) {
+                  mem_percent_data.push({x: gpu_usage.timestamp, y: gpu_usage.mem_used * 100 / gpu_usage.mem_total});
+                  enc_percent_data.push({x: gpu_usage.timestamp, y: gpu_usage.enc});
+                  dec_percent_data.push({x: gpu_usage.timestamp, y: gpu_usage.dec});
+                  gtemp_celsius_data.push({x: gpu_usage.timestamp, y: gpu_usage.gtemp});
+              });
+
+              line_chart_datasets_push(datasets, get_gpu_mem_label(nvidia_gpu_usage_history.slice(-1)[0]), mem_percent_data);
+              line_chart_datasets_push(datasets, get_gpu_enc_label(nvidia_gpu_usage_history.slice(-1)[0]), enc_percent_data);
+              line_chart_datasets_push(datasets, get_gpu_dec_label(nvidia_gpu_usage_history.slice(-1)[0]), dec_percent_data);
+              line_chart_datasets_push(datasets, get_gpu_gtemp_label(nvidia_gpu_usage_history.slice(-1)[0]), gtemp_celsius_data);
+
+              chart_new(canvas_id, {
+                  type: 'line',
+                  data: {
+                      datasets: datasets
+                  },
+                  options: {
+                      scales: {
+                          xAxes: [realtime_tick],
+                          yAxes: [percent_tick, celsius_tick]
+                      },
+                      plugins: {
+                          streaming: {
+                              refresh: 1000,
+                              onRefresh: gpu_usage_on_refresh
+                          }
+                      }
+                  }
+              });
+
+              setInterval(function () {
+                  $.ajax({
+                      url: stream_stats_url,
+                      success: function (result) {
+                          var chart = $('#' + canvas_id).closest('.card').find('.card-header');
+
+                          $('.stream-stats-total', chart).html(v.sprintf('Total: %d', result['total']));
+                          $('.stream-stats-starting', chart).html(v.sprintf('Starting: %d', result['starting']));
+                          $('.stream-stats-running', chart).html(v.sprintf('Running: %d', result['running']));
+                          $('.stream-stats-restarting', chart).html(v.sprintf('Restarting: %d', result['restarting']));
+                          $('.stream-stats-sleeping', chart).html(v.sprintf('Sleeping: %d', result['sleeping']));
+                          $('.stream-stats-stopped', chart).html(v.sprintf('Stopped: %d', result['stopped']));
+                      }
+                  });
+              }, 1000);
+          });
+      }
+
+  </script>
+  <div class="card card-default">
+    <div class="card-header">
+      <h6 class="card-title">
+        {{ '%s Usage'|format(server.info.get('cpu_name', '')) }}
+      </h6>
+      <div class="badge bg-primary ml-6" id="cpu-percent"></div>
+      <div class="badge bg-info ml-1" id="cpu-temperature"></div>
+      <div class="badge bg-azure ml-1" id="cpu-frequency"></div>
+    </div>
+    <div class="card-body">
+      <canvas id="cpu_usage"></canvas>
+      <script>
+          cpu_usage_chart_new('cpu_usage');
+      </script>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-md-6">
+      <div class="card card-default">
+        <div class="card-header"><h6 class="card-title">Memory Usage</h6></div>
+        <div class="card-body">
+          <canvas id="mem_usage"></canvas>
+          <script>
+              memory_usage_chart_new('mem_usage');
+          </script>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-6">
+      <div class="card card-default">
+        <div class="card-header"><h6 class="card-title">Network Usage</h6></div>
+        <div class="card-body">
+          <canvas id="net_usage"></canvas>
+          <script>
+              network_usage_chart_new('net_usage');
+          </script>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% if intel_gpu.name %}
+    {% set stream_stats = get_gpu_stream_stats(intel_gpu.server_id, 'qsv') %}
+    <div class="card card-default">
+      <div class="card-header">
+        <div class="row" style="width: 100%">
+          <div class="col-md-5">
+            <h6 class="card-title">
+              {{ '%s Usage'|format(intel_gpu.name) }}
+            </h6>
+          </div>
+          <div class="col-md-7">
+            <div class="badge bg-primary stream-stats-total">Total: {{ stream_stats['total'] }}</div>
+            <div class="badge bg-info stream-stats-starting">Starting: {{ stream_stats['starting'] }}</div>
+            <div class="badge bg-success stream-stats-running">Running: {{ stream_stats['running'] }}</div>
+            <div class="badge bg-warning stream-stats-restarting">Restarting: {{ stream_stats['restarting'] }}</div>
+            <div class="badge bg-pink stream-stats-sleeping">Sleeping: {{ stream_stats['sleeping'] }}</div>
+            <div class="badge bg-danger stream-stats-stopped">Stopped: {{ stream_stats['stopped'] }}</div>
+            <a class="btn btn-azure float-right" href="/server/{{intel_gpu.server_id}}/intel-gpu-benchmark">Benchmark</a>
+          </div>
+        </div>
+      </div>
+      <div class="card-body">
+        <canvas id="intel_gpu_usage"></canvas>
+        <script>
+            intel_gpu_chart_new('intel_gpu_usage', '{{ url_for("server.intel_gpu_stream_stats", server=server) }}');
+        </script>
+      </div>
+    </div>
+  {% endif %}
+
+  {% for gpu in nvidia_gpus %}
+    {% set canvas_id = 'gpu_%d_usage'|format(gpu.index) %}
+    {% set title = '%s Usage'|format(gpu.name) %}
+    {% set stream_stats = get_gpu_stream_stats(gpu.server_id, 'nvenc', gpu.index) %}
+    <div class="card card-default"}}>
+      <div class="card-header" style="display: flex;">
+        <div class="row" style="width: 100%">
+          <div class="col-md-5">
+            <h6 class="card-title">{{ title }}</h6>
+          </div>
+          <div class="col-md-7">
+            {{ colorful_label('GPU%d'|format(gpu.index))|safe }}
+            <div class="badge bg-primary stream-stats-total">Total: {{ stream_stats['total'] }}</div>
+            <div class="badge bg-info stream-stats-starting">Starting: {{ stream_stats['starting'] }}</div>
+            <div class="badge bg-success stream-stats-running">Running: {{ stream_stats['running'] }}</div>
+            <div class="badge bg-warning stream-stats-restarting">Restarting: {{ stream_stats['restarting'] }}</div>
+            <div class="badge bg-pink stream-stats-sleeping">Sleeping: {{ stream_stats['sleeping'] }}</div>
+            <div class="badge bg-danger stream-stats-stopped">Stopped: {{ stream_stats['stopped'] }}</div>
+            <a class="btn btn-azure float-right" href="/server/{{gpu.server_id}}/nvidia-gpu-{{ gpu.index }}-benchmark">Benchmark</a>
+          </div>
+        </div>
+      </div>
+      <div class="card-body">
+        <canvas id={{ canvas_id }}></canvas>
+        <script>
+            nvidia_gpu_chart_new('{{ canvas_id }}',
+                                 '{{ url_for("server.nvidia_gpu_usage", server_id=server.id, device_id=gpu.index) }}',
+                                 '{{ url_for("server.nvidia_gpu_usage_history", server_id=server.id, device_id=gpu.index) }}',
+                                 '{{ url_for("server.nvidia_gpu_stream_stats", server=server, index=gpu.index) }}');
+        </script>
+      </div>
+    </div>
+  {% endfor %}
+{% endblock %}

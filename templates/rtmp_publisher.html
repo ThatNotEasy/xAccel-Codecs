@@ -1,0 +1,121 @@
+{% extends "layout.html" %}
+{% from "bootstrap.html" import panel with context %}
+
+
+{% block title %}RTMP Publishers{% endblock %}
+
+
+{% block content %}
+  <style>
+    .btn.btn-link {
+      padding: 0 !important;
+      outline: none !important;
+    }
+  </style>
+
+  <div class="container">
+    {% call panel() %}
+      <table class="table table-hover">
+        <thead class="table-primary">
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Address</th>
+            <th>Time</th>
+            <th>Clients</th>
+            <th>Settings</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for publisher in publishers %}
+          <tr data-id="{{ publisher.id }}">
+            <td class="publisher-id">{{ publisher.id }}</td>
+            <td>
+              <label class="label label-primary publisher-name">{{ publisher.name }}</label>
+            </td>
+            <td class="publisher-addr">{{ publisher.addr }}</td>
+            <td class="publisher-time">{{ publisher.time }}</td>
+            <td class="publisher-clients">{{ publisher.clients|length }}</td>
+            <td class="publisher-settings">
+              <button type="button" class="btn btn-link vjs-player-open"
+                      data-url="/rtmp/{{ publisher.id }}/videojs">
+                <span class="glyphicon glyphicon-modal-window" title="Player"></span>
+              </button>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    {% endcall %}
+  </div>
+
+  <script>
+      $(function () {
+          setInterval(function () {
+              $.ajax({
+                  url: '/api/rtmp/publishers',
+                  success: function (result) {
+                      var publisher_ids = [];
+
+                      for (var i = 0; i < result.length; i++) {
+                          var publisher = result[i];
+                          var tr = $(v.sprintf('tr[data-id=%s]', publisher.id));
+
+                          publisher_ids.push(publisher.id);
+
+                          if (tr.length > 0) {
+                              /* Update the row */
+                              tr.find('.publisher-time').html(publisher.time);
+                              tr.find('.publisher-clients').html(publisher.clients.length);
+                          } else {
+                              /* Add new row to the table */
+                              $(v.sprintf(
+                                  '<tr data-id="%s">' +
+                                  '  <td class="publisher-id">%s</td>' +
+                                  '  <td><label class="label label-primary publisher-name">%s</label></td>' +
+                                  '  <td class="publisher-addr">%s</td>' +
+                                  '  <td class="publisher-time">%s</td>' +
+                                  '  <td class="publisher-clients">%d</td>' +
+                                  '  <td class="publisher-settings">' +
+                                  '    <button type="button" class="btn btn-link vjs-player-open"' +
+                                  '            data-url="/rtmp/%s/videojs">' +
+                                  '      <span class="glyphicon glyphicon-modal-window" title="Player"></span>' +
+                                  '    </button>' +
+                                  '  </td>' +
+                                  '</tr>',
+                                  publisher.id, publisher.id, publisher.name,
+                                  publisher.addr, publisher.time, publisher.clients.length,
+                                  publisher.id
+                              )).appendTo('table > tbody');
+                          }
+                      }
+
+                      /* Remove the no longer exists publisher row from table */
+                      $('tr[data-id]').each(function (index, tr) {
+                          /*
+                           * Prevent to use the jquery data() method, it will try
+                           * convert the string to the number.
+                           * */
+                          var id = parseInt($(tr).attr('data-id'));
+
+                          if (!publisher_ids.includes(id)) {
+                              $(tr).remove();
+                          }
+                      });
+                  }
+              });
+          }, 1000);
+
+          $('body').on('click', '.vjs-player-open', function () {
+              var width = 852;
+              var height = 480;
+              var left = (screen.width - width) / 2;
+              var top = (screen.height - height) / 2;
+              var url = $(this).data('url');
+              var features = v.sprintf('width=%d,height=%d,left=%d,top=%d', width, height, left, top);
+
+              window.open(url, v.sprintf('videojs player for %s', url), features);
+          });
+      });
+  </script>
+{% endblock %}

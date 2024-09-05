@@ -1,0 +1,216 @@
+{% extends "layout.html" %}
+{% from "bootstrap.html" import colorful_label, table, modal, form_group, input, select, select_option with context %}
+
+{% block title %}Manage Profiles{% endblock %}
+
+{% block content %}
+  {% set toolbar = [
+      '<button type="button" class="btn btn-purple" data-toggle="modal" data-target="#profile-transfer">Profile Transfer</button>'
+  ] %}
+  <script>
+      var profiles = [
+      {% for profile in profiles %}
+          {% set ns = namespace(video_codec='', audio_codec='', video_encoders=[], audio_encoders=[]) %}
+          {% for encoder in profile.video_encoders %}
+              {% set ns.video_codec = ns.video_codec + encoder.get('codec') %}
+
+              {% if '264' in encoder.get('codec') %}
+                  {% set codec = 'H.264' %}
+              {% elif '265' in encoder.get('codec') or 'hevc' in encoder.get('codec') %}
+                  {% set codec = 'HEVC' %}
+              {% elif 'mpeg2' in encoder.get('codec') %}
+                  {% set codec = 'MPEG2' %}
+              {% else %}
+                  {% set codec = encoder.get('codec')|replace('_', ' ')|upper %}
+              {% endif %}
+
+              {% set size = encoder.get('size') or '' %}
+
+              {% if encoder.get('codec') == 'copy' %}
+                  {% set bitrate = '' %}
+              {% else %}
+                  {% set bitrate = encoder.get('bitrate')|string + ' kbps' %}
+              {% endif %}
+
+              {% do ns.video_encoders.append(colorful_label(filter(None, [codec, size, bitrate])|join(' '))) %}
+          {% endfor %}
+
+          {% for encoder in profile.audio_encoders %}
+              {% set ns.audio_codec = ns.audio_codec + encoder.get('codec') %}
+              {% if 'aac' in encoder.get('codec') %}
+                  {% set codec = 'AAC' %}
+              {% elif 'mp3' in encoder.get('codec')  %}
+                  {% set codec = 'MP3' %}
+              {% else %}
+                  {% set codec = encoder.get('codec')|upper %}
+              {% endif %}
+
+              {% if encoder.get('codec') == 'copy' %}
+                  {% set bitrate = '' %}
+              {% else %}
+                  {% set bitrate = encoder.get('bitrate')|string + ' kbps' %}
+              {% endif %}
+
+              {% do ns.audio_encoders.append(colorful_label(filter(None, [codec, bitrate])|join(' '))) %}
+          {% endfor %}
+          '<tr data-id="{{ profile.id }}" data-name="{{ profile.name }}">' +
+          '  <td>{{ profile.id }}</td>' +
+          '  <td><div class="badge bg-primary">{{ profile.name }}</div></td>' +
+          '  <td>{{ colorful_label(profile.server_name) }}</td>' +
+          '  <td>' +
+          {% if 'qsv' in ns.video_codec %}
+              '{{ colorful_label('QuickSync') }}' +
+          {% elif 'nvenc' in ns.video_codec %}
+              '{{ colorful_label('NVENC') }}' +
+              {% if profile.hwaccel_device != -1 %}
+                  '{{ colorful_label('GPU%d'|format(profile.hwaccel_device)) }}' +
+              {% endif %}
+          {% endif %}
+
+          {% if ('qsv' in ns.video_codec or 'nvenc' in ns.video_codec) and profile.hwaccel_method != 'full' %}
+              '{{ colorful_label(profile.hwaccel_method|replace('_', ' ')|capitalize) }}' +
+          {% endif %}
+          '  </td>' +
+          '  <td>{{ "<br/>".join(ns.video_encoders)|safe }}</td>' +
+          '  <td>{{ "<br/>".join(ns.audio_encoders)|safe }}</td>' +
+          '  <td>' +
+          {% if 'copy' not in ns.video_codec and 'mpeg2' not in ns.video_codec %}
+              {% if 'nvenc' in ns.video_codec and profile.video_preset == 'hp' %}
+                  'High Performance' +
+              {% elif 'nvenc' in ns.video_codec and profile.video_preset == 'hq' %}
+                  'High Quality' +
+              {% elif 'nvenc' in ns.video_codec and profile.video_preset == 'llhp' %}
+                  'Low Latency High Performance' +
+              {% elif 'nvenc' in ns.video_codec and profile.video_preset == 'llhq' %}
+                  'Low Latency High Quality' +
+              {% else %}
+                  '{{ profile.video_preset|capitalize }}' +
+              {% endif %}
+          {% else %}
+              '-' +
+          {% endif %}
+          '  </td>' +
+          '  <td>' +
+          {% if 'copy' not in ns.video_codec and 'mpeg2' not in ns.video_codec %}
+              '{{ profile.video_profile|capitalize }}' +
+          {% else %}
+              '-' +
+          {% endif %}
+          '  </td>' +
+          '  <td>' +
+          {% if 'copy' not in ns.video_codec %}
+              {% if profile.frame_rate == 'auto' %}
+                  'Auto' +
+              {% elif '/' in profile.frame_rate %}
+                  '{{ '%g'|format(profile.frame_rate.split('/')[0]|int / profile.frame_rate.split('/')[-1]|int) }}' +
+              {% endif %}
+          {% else %}
+              '-' +
+          {% endif %}
+          '  </td>' +
+          '  <td>' +
+          {% if 'copy' not in ns.video_codec %}
+              '{{ profile.keyframe_interval }}' +
+          {% else %}
+              '-' +
+          {% endif %}
+          '  </td>' +
+          '  <td>' +
+          {% if 'copy' not in ns.audio_codec %}
+              '{{ profile.audio_sample_rate }}' +
+          {% else %}
+              '-' +
+          {% endif %}
+          '  </td>' +
+          '  <td>{{ profile.nb_streams }}</td>' +
+          '  <td>' +
+          '    <a href="{{ url_for('profile.copy', profile=profile) }}" class="btn btn-link">' +
+          '      <i class="fa fa-copy" title="copy"></i>' +
+          '    </a>' +
+          '    <a class="btn btn-link" href="{{ url_for('profile.settings', profile=profile) }}">' +
+          '      <i class="fa fa-cog" title="settings"></i>' +
+          '    </a>' +
+          '    <form action="{{ url_for('profile.delete', profile=profile) }}" method="post" style="display: inline-block">' +
+          '      <button type="submit" class="btn btn-link" data-toggle="confirmation" ' +
+          '              data-message="Please confirm to delete the profile {{ profile.id }} {{ profile.name }}?">' +
+          '        <i class="fa fa-times text-danger" title="delete"></i>' +
+          '      </button>' +
+          '    </form>' +
+          '  </td>' +
+          '</tr>'
+          {% if not loop.last %},{% endif %}
+      {% endfor %}
+      ];
+  </script>
+
+  {% call table(columns=['ID', 'Name', 'Server', 'HWAccel', 'Video Encoders', 'Audio Encoders', 'Preset', 'Profile', 'FPS', 'KeyInt', 'Sample Rate', 'Streams', 'Settings'], toolbar=toolbar, data='profiles') %}
+  {% endcall %}
+
+  {% call modal(id='profile-transfer', title='Profile Transfer', size='lg') %}
+    {% set mass_edit_layout=(2, 2, 5, 3) %}
+    <div class="modal-body">
+      <form class="form-horizontal" data-toggle="validator" method="post">
+        {% call(id, name) form_group(name='url', label='URL',
+                                     tooltip='Please fill the target xaccel panel\'s URL here, '
+                                             'example: http://host:port or https://host:port if the https is enabled '
+                                             'in target server.',
+                                     layout=mass_edit_layout) %}
+          {{ input(id, name, get_json_conf(name), type='text', pattern='(http|https):\/\/[^\/]*') }}
+        {% endcall %}
+
+        {% call(id, name) form_group(name='token', label='API Token',
+                                     tooltip='You can login to the target xaccel panel, go to the '
+                                             '<code>Account > Manage Accounts > Account Settings</code> page, '
+                                             'click the refresh icon <i class="fa fa-redo text-primary"></i> '
+                                             'at right of <code>API Token</code> option for generate the API token.',
+                                     layout=mass_edit_layout) %}
+          {{ input(id, name, get_json_conf(name)) }}
+        {% endcall %}
+
+        {% call(id, name) form_group(name='mode', label='Mode',
+                                     tooltip='Transfer mode will move the stream to the target xaccel panel, '
+                                             'the stream will disappear on this panel after transfer. But if '
+                                             'you need keep the stream on this server, please use Clone mode.',
+                                     layout=mass_edit_layout) %}
+          {% call(name) select(id, name, default='clone') %}
+            {{ select_option('transfer', get_json_conf(name), tags=['Transfer']) }}
+            {{ select_option('clone', get_json_conf(name), tags=['Clone']) }}
+          {% endcall %}
+        {% endcall %}
+
+        {% call(id, name) form_group(layout=mass_edit_layout) %}
+          <div class="form-group float-right">
+            <button type="button" class="btn btn-primary" onclick="profile_transfer.call(this, event)">Transfer</button>
+          </div>
+        {% endcall %}
+      </form>
+    </div>
+  {% endcall %}
+
+  <script>
+      function profile_transfer() {
+          var html = [];
+          var profiles = [];
+          var form = $(this).closest('form');
+
+          mass_select_each(function () {
+              profiles.push('profiles[]=' + $(this).data('id'));
+              html.push('<div class="badge bg-primary">' + $(this).data('name') + '</div>');
+          });
+
+          $.post({
+              url: '{{ url_for('profile.transfer') }}',
+              data: form.serialize() + '&' + profiles.join('&'),
+              dataType: 'json',
+              success: function (result) {
+                  if ('error' in result)
+                      flash_message(result['error']);
+                  else
+                      flash_message('Profile transferred successfully', 'success');
+              }
+          }).done(function (data) {
+              $('#profile-transfer').fadeOut().modal('hide');
+          });
+      }
+  </script>
+{% endblock %}

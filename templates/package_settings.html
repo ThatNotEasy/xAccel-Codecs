@@ -1,0 +1,48 @@
+{% extends "layout.html" %}
+{% from "bootstrap.html" import panel, form, form_group, input, select, select_option, float_group, float_label with context %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+  {% call panel(title=title) %}
+    {% call form(request.path, url_for('package.manage')) %}
+      {% call(id, name) form_group(name='name', label='Name') %}
+        {{ input(id, name, get_json_conf(name), 'required', maxlength=255) }}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='price', label='Price') %}
+        <div class="input-group">
+          {{ input(id, name, get_json_conf(name), 'required', type='number', min=0) }}
+          <span class="input-group-text">credits</span>
+        </div>
+      {% endcall %}
+
+      {% call(id, name) form_group(name='duration', label='Duration') %}
+        <div class="input-group">
+          {{ input(id, name, get_json_conf(name), 'required', type='number', min=1) }}
+
+          {% call(name) select(id=None, name='unit', default='hours') %}
+            {{ select_option('hours', get_json_conf(name), label='Hours') }}
+            {{ select_option('days', get_json_conf(name), label='Days') }}
+            {{ select_option('months', get_json_conf(name), label='Months') }}
+            {{ select_option('years', get_json_conf(name), label='Years') }}
+          {% endcall %}
+        </div>
+      {% endcall %}
+
+      {% call(id, name) form_group(name='bouquets[]', label='Bouquets') %}
+        {% call(name) select(id, name, 'multiple', title='\u00a0',
+                             **{'data-actions-box': true, 'data-multiple-separator': ' '}) %}
+          {% for bouquet_id, bouquet_name in bouquets %}
+            {{ select_option(bouquet_id, get_json_conf(name), label=bouquet_name) }}
+          {% endfor %}
+        {% endcall %}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='max_connections', label='Max Connections') %}
+        {{ input(id, name, get_json_conf(name), 'required',  type='number', min=0) }}
+      {% endcall %}
+
+    {% endcall %}
+  {% endcall %}
+{% endblock %}

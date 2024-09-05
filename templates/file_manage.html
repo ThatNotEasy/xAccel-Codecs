@@ -1,0 +1,38 @@
+<!-- Include the navigate bar -->
+{% extends "layout.html" %}
+{% from "bootstrap.html" import table, file_upload_modal with context %}
+
+{% block title %}Manage Files{% endblock %}
+
+{% block content %}
+  {% set columns = ['Filename', 'Date', 'Size', 'Settings'] %}
+  {% set columnDefs = [
+      {'type': 'filesize', 'targets': 2},
+  ] %}
+  {% set toolbar = '<button class="btn btn-primary" type="button" data-toggle="modal" data-target="#modal-file-upload">Upload</button>' %}
+
+  {% call table(columns=columns, columnDefs=columnDefs, toolbar=toolbar) %}
+    {% for file in files %}
+      <tr>
+        <td class="col-md-5" style="overflow: hidden; text-overflow: ellipsis">{{ file.filename }}</td>
+        <td class="col-md-2">{{ file.date }}</td>
+        <td class="col-md-2">{{ file.size|filesizeformat }}</td>
+        <td class="col-md-3">
+          <a href="/file/{{ file.id }}/download" class="btn btn-link" title="download">
+            <i class="fa fa-arrow-circle-down"></i>
+          </a>
+          <form action="/file/{{ file.id }}/delete" method="post">
+            <button type="submit" class="btn btn-link" title="delete"
+                    data-toggle="confirmation"
+                    data-message="Please confirm to delete the file {{ file.filename }}?">
+              <i class="fa fa-times text-danger"></i>
+            </button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+  {% endcall %}
+
+  {{ file_upload_modal('modal-file-upload', url_for('file.upload'), types=['image', 'video'], reload_on_uploaded=True) }}
+
+{% endblock %}

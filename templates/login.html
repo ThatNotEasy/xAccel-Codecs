@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+  <meta http-equiv="X-UA-Compatible" content="ie=edge"/>
+  <title>Login - X Acceleration Codec</title>
+  <meta name="msapplication-TileColor" content="#206bc4"/>
+  <meta name="theme-color" content="#206bc4"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="HandheldFriendly" content="True"/>
+  <meta name="MobileOptimized" content="320"/>
+  <meta name="robots" content="noindex,nofollow,noarchive"/>
+  <link rel="icon" href="./favicon.ico" type="image/x-icon"/>
+  <link rel="shortcut icon" href="./favicon.ico" type="image/x-icon"/>
+  <link href="/static/tabler/css/tabler.min.css" rel="stylesheet"/>
+  <link href="/static/font-awesome/css/all.min.css" rel="stylesheet"/>
+  <link href="/static/css/custom.css" rel="stylesheet"/>
+
+  <script src="/static/js/voca.min.js"></script>
+  <script src="/static/js/jquery.min.js"></script>
+  <script src="/static/js/bootstrap.bundle.min.js"></script>
+  <script src="/static/js/validator.min.js"></script>
+  <script src="/static/tabler/js/tabler.min.js"></script>
+</head>
+<body class="antialiased theme-{{ current_user.theme }}">
+  <div class="page">
+    <div class="container" style="width: 42ch; height: 20ch; position: absolute; top: calc(50% - 20ch); left: calc(50% - 20ch);">
+      <div class="card card-default">
+        <div class="card-body">
+          <h3 class="card-title">Login</h3>
+
+          <form class="form-horizontal" method="post" data-toggle="validator">
+            <input type="hidden" name="next" value="{{ next or '' }}">
+
+            {{ recaptcha }}
+
+            <div class="form-group">
+              <div class="input-icon">
+                <div class="input-icon-addon">
+                  <span class="fa fa-user"></span>
+                </div>
+                <input class="form-control" type="text" name="username" placeholder="Username" required autofocus>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <div class="input-icon">
+                <div class="input-icon-addon">
+                  <span class="fa fa-lock"></span>
+                </div>
+                <input class="form-control" type="password" name="password" placeholder="Password" required>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <button class="btn btn-primary" type="submit" style="display: block; margin-left: auto; margin-right: 0">Login</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      {% from "bootstrap.html" import alert %}
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div>
+            {% for category, message in set(messages) %}
+              {{ alert(message, category) }}
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+    </div>
+  </div>
+</body>
+</html>

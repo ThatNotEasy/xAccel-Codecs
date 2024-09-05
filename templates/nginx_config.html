@@ -1,0 +1,24 @@
+{% extends "layout.html" %}
+{% from "bootstrap.html" import panel, form_group, input with context %}
+
+
+{% block title %}Nginx Configure{% endblock %}
+
+{% block content %}
+  <form class="form-horizontal" data-toggle="validator" method="post">
+    {% call panel(title='Security') %}
+      {% call(id, name) form_group(name='whitelist', label='Whitelist',
+                                   tooltip='Only the IP or domain name in the here are allowed '
+                                           'to access the stream and VOD contents. You can use '
+                                           'comma "," to separate multiple IP or domain names. '
+                                           'Also, IP range in CIDR format is supported. '
+                                           'For example: 192.168.2.0/24') %}
+        <textarea class="form-control" id="{{ id }}" name="{{ name }}" rows="8" style="overflow-x: hidden">{{ whitelist }}</textarea>
+      {% endcall %}
+
+      {% call(id, name) form_group() %}
+        <button class="form-control btn btn-primary" formaction="/nginx/whitelist" type="submit">Submit</button>
+      {% endcall %}
+    {% endcall %}
+  </form>
+{% endblock %}

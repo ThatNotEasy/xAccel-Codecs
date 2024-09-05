@@ -1,0 +1,1768 @@
+{% from "bootstrap.html" import form_group, unique_id, join2, select, select_group, select_option, input, selector,
+                                float_group, float_label, timer_selectpicker, file_upload_modal with context %}
+
+
+{% macro input_options() %}
+  {% set collapse_id = unique_id() %}
+  {% set select_id = unique_id() %}
+
+  {% call(id, name) form_group(label='Source Stream',
+                               tooltip='Supports rtmp, rtsp, rtp, udp, http, hls protocols and maximum 20 failover '
+                                       'sources. The priority is URL #0 > #1 > #2 #3 ..., it will switch to the '
+                                       'priority source automatically once it\'s back to online. '
+                                       'And you can use mouse to drag and drop for swap the URLs. '
+                                       'Also non-standards dvb, v4l2, youtube, twitch and various stream '
+                                       'website source are supported'
+                                       '(\'https://www.youtube.com/watch?v=xxx\', https://www.twitch.tv/xxx). '
+                                       'If you wish to use BISS key for DVB source, here is the example: '
+                                       '\'dvb://server=1&adapter=0&sid=1&bisskey=0x112233445566\'.'
+                                       'For v4l2 source, the URL should be: \'v4l2://v4l2=/dev/video0\'. '
+                                       'The corresponding alsa device will be used for v4l2 device automatically, '
+                                       'but this may not works if the kernel is too old. in this case, you will need '
+                                       'specify the alsa device manually like this: '
+                                       '\'v4l2://v4l2=/dev/video0&alsa=hw:0,0\'. ') %}
+    <div class="input-group">
+      {{ input_url_option(0) }}
+
+      {% call(name) select(unique_id(), 'input_urls[0]', 'required',
+                           title='Please select the source stream',
+                           **{'data-size': 20,
+                              'data-live-search': true,
+                              'data-live-search-placeholder': 'Search'}) %}
+        {% for server in get_servers() %}
+          {% for adapter in server.adapters.all() %}
+            {% set title = 'Server %d %s Adapter %d %s %sMHz'|format(server.id, server.name, adapter.id, adapter.name, adapter.frequency) %}
+            {% call select_group(title) %}
+              {% for service in adapter.services %}
+                {% if service.status != 'disabled' %}
+                  {% set url = 'dvb://server=%d&adapter=%d&sid=%d'|format(server.id, adapter.id, service.sid) %}
+                  {{ select_option(url, get_json_conf(name), label=service.name, tags=[service.status|capitalize]) }}
+                {% endif %}
+              {% endfor %}
+            {% endcall %}
+          {% endfor %}
+        {% endfor %}
+      {% endcall %}
+
+      <button class="btn btn-primary" type="button" id="{{ select_id }}">
+        <i class="fa fa-satellite-dish"></i>
+      </button>
+
+      <button class="btn btn-primary" type="button"
+              data-toggle="collapse" data-target="#{{ collapse_id }}">
+        <i class="fa fa-cog"></i>
+      </button>
+
+      <script>
+          $('select[name="input_urls[0]"]').closest('.bootstrap-select').hide();
+
+          $(function () {
+              $('select[name="input_urls[0]"]').on('changed.bs.select', function () {
+                  var title = $(this).closest('.bootstrap-select').children('.btn').attr('title');
+                  $('input', input_detached).val($(this).selectpicker('val'));
+                  $('input[name="name"]').val(title.replace(/ (Probing|Scrambled|Active|Inactive|Disabled)/g, ''));
+              });
+
+              var input_detached = $('select[name="input_urls[0]"]').closest('.bootstrap-select').detach();
+
+              $('#{{ select_id }}').on('click', function () {
+                  var parent = $(this).closest('.input-group');
+                  var input = $('[name="input_urls[0]"]');
+
+                  parent.prepend(input_detached);
+                  if (input.is('select')) {
+                      input_detached.fadeIn();
+                      input.closest('.bootstrap-select').fadeOut();
+
+                      input_detached = input.closest('.bootstrap-select').detach();
+                  } else {
+                      input_detached.fadeIn();
+                      input.closest('.has-float-label').fadeOut();
+
+                      input_detached = input.closest('.has-float-label').detach();
+                  }
+
+
+                  $('[data-toggle="validator"]').validator('update');
+              });
+          });
+      </script>
+    </div>
+  {% endcall %}
+
+  <div class="collapse" id="{{ collapse_id }}">
+    {% set length = max(len(get_json_conf('input_urls[]') or []), 4) %}
+    {% for index in range(1, length) %}
+      {% call(id, name) form_group() %}
+        {% call() float_group() %}
+          {{ input_url_option(index, length) }}
+        {% endcall %}
+      {% endcall %}
+    {% endfor %}
+
+    {{ user_agent_option() }}
+    {{ proxy_option() }}
+    {{ local_addr_option() }}
+    {{ referer_option() }}
+    {{ headers_option() }}
+  </div>
+
+  <script>
+      function input_url_delete(e) {
+          var index = 0;
+
+          $(e.target).closest('.form-group').remove();
+          $('input[name^="input_urls"]').each(function () {
+              $(this).attr('name', 'input_urls[' + index + ']');
+              $(this).closest('.has-float-label').find('label').html('URL #' + (index + 1));
+              index += 1;
+          });
+      }
+
+      function input_url_add() {
+          var index = $('input[name^="input_urls"]').length;
+          var last = $('input[name="input_urls[' + (index - 1) + ']').closest('.form-group');
+          var div = last.clone();
+
+          if (index >= 20) {
+              flash_message('Too many backup source stream URLs');
+              return;
+          }
+
+          $('input', div).attr('name', 'input_urls[' + index + ']').val('');
+          $('.has-float-label label', div).html('URL #' + (index + 1));
+
+          $('.has-float-label button', last).attr('onclick', 'input_url_delete(event)');
+          $('.has-float-label button span', last).attr('class', 'fa fa-times text-danger');
+
+          div.insertAfter(last);
+      }
+
+      function input_url_on_dragstart(event) {
+          event.dataTransfer.setData('drag_target_id', event.target.id);
+      }
+
+      function input_url_on_dragover(event) {
+          event.preventDefault();
+      }
+
+      function input_url_on_drop(event) {
+          event.preventDefault();
+          var drag_target_id = event.dataTransfer.getData('drag_target_id');
+          var drag_target = document.getElementById(drag_target_id);
+          var drop_target = event.target;
+          var tmp = drag_target.value;
+          drag_target.value = drop_target.value;
+          drop_target.value = tmp;
+      }
+  </script>
+{% endmacro %}
+
+
+{% macro input_url_option(index, nb_inputs) %}
+  {% call(id, name) float_label(name='input_urls[%d]'|format(index), label='URL #%d'|format(index + 1)) %}
+    {% set required = 'required' if index == 0 else '' %}
+    {{ input(id, name, get_json_conf(name), required,
+             draggable='true',
+             style='-webkit-user-select:text !important',
+             ondragstart='input_url_on_dragstart(event);',
+             ondragover='input_url_on_dragover(event);',
+             ondrop='input_url_on_drop(event);') }}
+    {% if index > 0 %}
+      <button type="button" class="btn btn-link"
+              {% if index < nb_inputs - 1 %}
+              onclick="input_url_delete(event);">
+              {% else %}
+              onclick="input_url_add(event);">
+              {% endif %}
+        <span class="fa {% if index < nb_inputs - 1 %} fa-times text-danger {% else %} fa-plus {% endif %}"></span>
+      </button>
+    {% endif %}
+  {% endcall %}
+{% endmacro %}
+
+{% macro user_agent_option() %}
+  {% call(id, name) form_group(name='user_agent', label='HTTP User Agent', **kwargs) %}
+    {{ input(id, name, get_json_conf(name)) }}
+  {% endcall %}
+{% endmacro %}
+
+{% macro proxy_option() %}
+  {% call(id, name) form_group(name='proxy[]', label='Proxy', **kwargs) %}
+    {% call(name) select(id, name, 'multiple', title='\u00a0',
+                         **{'data-live-search': true,
+                            'data-live-search-placeholder': 'Search',
+                            'data-actions-box': true,
+                            'data-multiple-separator': ' '}) %}
+      {% for proxy in get_proxies() %}
+        {{ select_option(proxy.id, get_json_conf(name), tags=[proxy.name]) }}
+      {% endfor %}
+    {% endcall %}
+  {% endcall %}
+{% endmacro %}
+
+{% macro referer_option() %}
+  {% call(id, name) form_group(name='referer', label='HTTP Referer', **kwargs) %}
+    {{ input(id, name, get_json_conf(name), pattern='https?://.*') }}
+  {% endcall %}
+{% endmacro %}
+
+{% macro headers_option() %}
+  {% call(id, name) form_group(name='headers', label='HTTP Headers',
+                               tooltip='Custom the HTTP headers, headers are '
+                                       'key: value pairs, multiple headers use '
+                                       '\\r\\n to join it.',
+                               **kwargs) %}
+    {{ input(id, name, get_json_conf(name)) }}
+  {% endcall %}
+{% endmacro %}
+
+{% macro local_addr_option() %}
+  {% call(id, name) form_group(name='local_addr',
+                               label='HTTP Local Address',
+                               class='server_option',
+                               tooltip='The local address binding for HTTP/HTTPS connection.',
+                               **kwargs) %}
+    {% call(name) select(id, name) %}
+      {% for server in get_servers() %}
+        {{ select_option('auto', get_json_conf(name), label='Auto', **{'data-server_id': server.id}) }}
+        {{ select_option('127.0.0.1', get_json_conf(name), label='127.0.0.1', tags=['lo'], **{'data-server_id': server.id}) }}
+        {% for k, v in server.interfaces.items() %}
+          {{ select_option(v, get_json_conf(name), label=v, tags=[k], **{'data-server_id': server.id}) }}
+        {% endfor %}
+      {% endfor %}
+    {% endcall %}
+
+    <script>
+        $(function () {
+            $({{ selector(name) }}).on('change', function () {
+                selectpicker_options_toggle.call(this, ['server_id'], ['auto']);
+            }).trigger('change');
+        });
+    </script>
+  {% endcall %}
+{% endmacro %}
+
+{% macro fflags_option() %}
+  {% call(id, name) form_group(name='fflags[]',
+                               label='Format Flags',
+                               tooltip='If the source stream has timestamp problem, please select the genpts flags '
+                                       'for generate refresh timestamp.',
+                               **kwargs) %}
+    {% call(name) select(id, name, 'multiple', title='\u00a0',
+                         **{'data-actions-box': true, 'data-multiple-separator': ' '}) %}
+      {{ select_option('discardcorrupt', get_json_conf(name), tags=['discardcorrupt']) }}
+      {{ select_option('genpts', get_json_conf(name), tags=['genpts']) }}
+      {{ select_option('igndts', get_json_conf(name), tags=['igndts']) }}
+      {{ select_option('sortdts', get_json_conf(name), tags=['sortdts']) }}
+      {{ select_option('nobuffer', get_json_conf(name), tags=['nobuffer']) }}
+    {% endcall %}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro rate_emulation_option() %}
+  {% call(id, name) form_group(name='rate_emulation',
+                               label='Rate Emulation',
+                               tooltip='Read input at native frame rate. the software will transcoding the stream '
+                                       'as fast as possible. setup this option will help slow down the transcoding '
+                                       'speed to 1x.',
+                               **kwargs) %}
+    {% call(name) select(id, name, default='no') %}
+      {{ select_option('yes', get_json_conf(name), label='Yes') }}
+      {{ select_option('no', get_json_conf(name), label='No') }}
+    {% endcall %}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro on_demand_option() %}
+  {% call(id, name) form_group(name='on_demand',
+                               label='Stream On Demand',
+                               tooltip='Streaming only when the client is playing. It has delay '
+                                       'between the first client connecting and streaming is ready.',
+                               **kwargs) %}
+    {% call(name) select(id, name, default='no') %}
+      {{ select_option('yes', get_json_conf(name), label='Yes') }}
+      {{ select_option('no', get_json_conf(name), label='No') }}
+    {% endcall %}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro restart_option() %}
+  {% call(id, name) form_group(name='restart',
+                                 label='Restart Schedule',
+                                 tooltip='Restart the stream at specific time. Tips: set this option only when your '
+                                         'source stream has timestamp or similar problem and have to restart '
+                                         'periodically',
+                                 **kwargs) %}
+    {{ timer_selectpicker(name) }}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro sleep_option() %}
+  {% call(id, name) form_group(name='sleep',
+                               label='Sleep Schedule',
+                               tooltip='This option is for disable the stream at specific time. '
+                                       'The format is: "HH:MM-HH:MM", also you can use comma "," to '
+                                       'join multiple time range. For example: "06:00-9:00, 16:00-20:00"',
+                               **kwargs) %}
+    {{ input(id, name, get_json_conf(name), pattern='(?:([0-9]|0[0-9]|1[0-9]|2[0-3]):(0[0-9]|[1-5][0-9])\s*-\s*([0-9]|0[0-9]|1[0-9]|2[0-3]):(0[0-9]|[1-5][0-9])(?:,\s*)?)*') }}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro timeshift_option() %}
+  {% call(id, name) form_group(name='timeshift',
+                               label='Timeshift',
+                               tooltip='This option is for shift the stream to another timezone or delay the stream.',
+                               **kwargs) %}
+    <div class="input-group">
+      {{ input(id, name, get_json_conf(name), type='number', min=0) }}
+      <span class="input-group-text">Seconds</span>
+    </div>
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro server_option() %}
+  {% call(id, name) form_group(name='server_id', label='Server',
+                               class='stream_profile_option') %}
+    {% call(name) select(id, name, 'required') %}
+      {% for server in get_servers() %}
+        {{ select_option(server.id, get_json_conf(name), tags=[server.name]) }}
+      {% endfor %}
+    {% endcall %}
+
+    <script>
+        $(function () {
+            $({{ selector(name) }}).on('change', function () {
+                $('[name^="video_encoders["][name$="].codec"]').trigger('change');
+                $({{ selector('cvdelogo_device') }}).trigger('change');
+            }).trigger('change');
+        })
+    </script>
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro video_map_option() %}
+  {% call(id, name) form_group(name='video_map',
+                               label='Video Map',
+                               tooltip='Select the specific video streams by stream specifiers. '
+                                       'For example: \'v:0\' is select the first video streams. '
+                                       '\'i:0x103\' is select the video stream by MPEG-TS PID 0x103. '
+                                       '\'p:1234:v:0\' is select the first video stream in the program 1234.',
+                               **kwargs) %}
+    {{ input(id, name, get_json_conf(name)) }}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro video_sync_option() %}
+  {% call(id, name) form_group(name='video_sync',
+                               label='Video Sync Method',
+                               class='stream_profile_option',
+                               tooltip='Set up this option to Pass Through only if you are restream, otherwise '
+                                       'it\'s better to use Auto. Variable or Constant Framerate will be used '
+                                       'if you set this method to Auto.') %}
+    {% call(name) select(id, name, default='passthrough') %}
+      {{ select_option('auto', get_json_conf(name), label='Auto') }}
+      {{ select_option('passthrough', get_json_conf(name), label='Pass Through') }}
+      {{ select_option('cfr', get_json_conf(name), label='Constant Frame Rate') }}
+      {{ select_option('vfr', get_json_conf(name), label='Variable Frame Rate') }}
+      {{ select_option('drop', get_json_conf(name), label='Drop') }}
+    {% endcall %}
+  {% endcall %}
+{% endmacro %}
+
+{% macro hwaccel_method_option() %}
+  {% call(id, name) form_group(name='hwaccel_method',
+                                 label='Hardware Acceleration Method',
+                                 class='stream_profile_option video_codec_option',
+                                 tooltip='Specify the hardware acceleration method to be used. '
+                                         'Both Full and Partial will using GPU to decoding, filtering and '
+                                         'encoding. The only difference is Partial may use more memory '
+                                         'bandwidth, so you should use Full in default. Sometimes if the source '
+                                         'may change the video pixel format or audio channel layout during Ads, '
+                                         'You can set up to Partial, because Full may failed in this case. '
+                                         'EncodingOnly is use GPU to encoding only while GPU not be able to '
+                                         'decoding more streams.') %}
+    {% call(name) select(id, name, title='\u00a0', default='full') %}
+      {{ select_option('full', get_json_conf(name), label='Full', **{'data-video_encoders[0].codec': ['h264_qsv', 'hevc_qsv', 'h264_nvenc', 'hevc_nvenc', 'av1_nvenc']}) }}
+      {{ select_option('partial', get_json_conf(name), label='Partial', **{'data-video_encoders[0].codec': ['h264_qsv', 'hevc_qsv', 'h264_nvenc', 'hevc_nvenc', 'av1_nvenc']}) }}
+      {{ select_option('encoding_only', get_json_conf(name), label='Encoding Only', **{'data-video_encoders[0].codec': ['h264_qsv', 'hevc_qsv', 'h264_nvenc', 'hevc_nvenc', 'av1_nvenc']}) }}
+    {% endcall %}
+
+  <script>
+      $(function () {
+          $({{ selector(name) }}).on('change', function () {
+              selectpicker_options_toggle.call(this, ['video_encoders[0].codec'], ['full']);
+              selectpicker_options_toggle.call($('[name="deinterlace_method"]'), ['video_encoders[0].codec', 'hwaccel_method'], ['auto']);
+          }).trigger('change');
+      });
+  </script>
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro hwaccel_device_option() %}
+  {% call(id, name) form_group(name='hwaccel_device',
+                               label='Hardware Acceleration Device',
+                               class='video_codec_option stream_profile_option') %}
+    {% call(name) select(id, name) %}
+      {% for server in get_servers() %}
+        {{ select_option(-1, get_json_conf(name), label='Auto', **{'data-server_id': server.id, 'data-video_encoders[0].codec': ['h264_nvenc', 'hevc_nvenc', 'av1_nvenc']}) }}
+        {% for gpu in server.gpus %}
+          {% if gpu.name.startswith('Nvidia') %}
+            {{ select_option(gpu.index, get_json_conf(name), label=gpu.name,
+                             tags=['GPU%d'|format(gpu.index)],
+                             **{'data-server_id': server.id, 'data-video_encoders[0].codec': ['h264_nvenc', 'hevc_nvenc', 'av1_nvenc']}) }}
+          {% elif gpu.name.startswith('Intel') %}
+            {{ select_option(gpu.index, get_json_conf(name), label=gpu.name,
+                             **{'data-server_id': server.id, 'data-video_encoders[0].codec': ['h264_qsv', 'hevc_qsv', 'av1_nvenc']}) }}
+          {% endif %}
+        {% endfor %}
+      {% endfor %}
+    {% endcall %}
+
+    <script>
+        $({{ selector(name) }}).on('change', function () {
+            selectpicker_options_toggle.call(this, ['server_id', 'video_encoders[0].codec']);
+        }).trigger('change');
+    </script>
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro video_encoders_option() %}
+  {% for index in range(0, max((get_json_conf('video_encoders') or [])|length, 1)) %}
+    {% call(id, name) form_group(label='Video Encoder #%d'|format(loop.index),
+                                 class='video_codec_option stream_profile_option', **{'data-encoder-id': loop.index0}) %}
+      {% call() float_group() %}
+        {% call(id, name) float_label(name='video_encoders[%d].codec'|format(index), label='codec', width='65%') %}
+          {% call(name) select(id, name, default=['h264_nvenc', 'h264_qsv', 'libx264'], onchange='video_encoder_onchange.call(this);') %}
+            {% for server in get_servers() %}
+              {% set encoders = [] %}
+              {% for gpu in server.gpus %}
+                {% do encoders.extend(gpu.encoders.values()) %}
+              {% endfor %}
+              {% set encoders = encoders|unique|list %}
+
+              {% if index == 0 %}
+                {{ select_option('copy', get_json_conf(name), label='Copy', tags=['Restream'], **{'data-server_id': server.id, 'data-video_encoders[0].codec': ['copy']}) }}
+              {% endif %}
+
+              {{ select_option('mpeg2video', get_json_conf(name), label='H.262 / MPEG-2', tags=['mpeg2video'], **{'data-server_id': server.id, 'data-video_encoders[0].codec': ['mpeg2video', 'libx264', 'libx265']}) }}
+
+              {% if 'h264_qsv' in encoders %}
+                {{ select_option('h264_qsv', get_json_conf(name), label='H.264 / MPEG-4', tags=['QuickSync'], **{'data-server_id': server.id, 'data-video_encoders[0].codec': ['h264_qsv', 'hevc_qsv']}) }}
+              {% endif %}
+
+              {% if 'h264_nvenc' in encoders %}
+                {{ select_option('h264_nvenc', get_json_conf(name), label='H.264 / MPEG-4', tags=['NVENC'], **{'data-server_id': server.id, 'data-video_encoders[0].codec': ['h264_nvenc', 'hevc_nvenc', 'av1_nvenc']}) }}
+              {% endif %}
+
+              {{ select_option('libx264', get_json_conf(name), label='H.264 / MPEG-4', tags=['libx264'], **{'data-server_id': server.id, 'data-video_encoders[0].codec': ['mpeg2video', 'libx264', 'libx265']}) }}
+
+              {% if 'hevc_qsv' in encoders %}
+                {{ select_option('hevc_qsv', get_json_conf(name), label='H.265 / HEVC', tags=['QuickSync'], **{'data-server_id': server.id, 'data-video_encoders[0].codec': ['h264_qsv', 'hevc_qsv']}) }}
+              {% endif %}
+
+              {% if 'hevc_nvenc' in encoders %}
+                {{ select_option('hevc_nvenc', get_json_conf(name), label='H.265 / HEVC', tags=['NVENC'], **{'data-server_id': server.id, 'data-video_encoders[0].codec': ['h264_nvenc', 'hevc_nvenc', 'av1_nvenc']}) }}
+              {% endif %}
+
+              {% if 'av1_nvenc' in encoders %}
+                {{ select_option('av1_nvenc', get_json_conf(name), label='AV1', tags=['NVENC'], **{'data-server_id': server.id, 'data-video_encoders[0].codec': ['h264_nvenc', 'hevc_nvenc', 'av1_nvenc']}) }}
+              {% endif %}
+
+              {{ select_option('libx265', get_json_conf(name), label='H.265 / HEVC', tags=['libx265'], **{'data-server_id': server.id, 'data-video_encoders[0].codec': ['mpeg2video', 'libx264', 'libx265']}) }}
+            {% endfor %}
+          {% endcall %}
+        {% endcall %}
+
+        {% call(id, name) float_label(name='video_encoders[%d].size'|format(index), label='size', width='35%') %}
+          {% call(name) select(id, name, default='auto', class='form-control selectpicker has-btn', onchange='update_output_video_encoders.call(this);') %}
+            {{ select_option('auto', get_json_conf(name), label='Auto') }}
+
+            {% for res in sortres('4096x2160', '2048x1080', '1920x1080', '1280x720', '852x480', '960x540',
+                                  '720x576', '720x480', '704x576', '640x480', '640x360', get_json_conf(name)) %}
+              {{ select_option(res, get_json_conf(name), tags=[res]) }}
+            {% endfor %}
+
+            <option disabled data-content="<input type='text' style='pointer-events: auto; border: 0; outline: none; background-color: inherit; width: 10ch' placeholder='Custom' onKeyDown='event.stopPropagation();' onClick='event.stopPropagation()'><button class='btn btn-link' type='button' style='pointer-events: auto' onClick='video_encoder_size_custom.call(this, event)'><span class='fa fa-plus'></span></button>"></option>
+          {% endcall %}
+        {% endcall %}
+
+      {% endcall %}
+      <p></p>
+      {% call() float_group() %}
+        {% call(id, name) float_label(name='video_encoders[%d].rc'|format(index), label='rc', width='8ch') %}
+          {% call(name) select(id, name, default='cbr', onchange='video_encoder_onchange.call(this);') %}
+            {{ select_option('cbr', get_json_conf(name), label='CBR') }}
+            {{ select_option('vbr', get_json_conf(name), label='VBR') }}
+          {% endcall %}
+        {% endcall %}
+
+        {% call(id, name) float_label(name='video_encoders[%d].bitrate'|format(index), label='bitrate kbps', width='7ch') %}
+          {{ input(id, name, get_json_conf(name), 'required', type='number', min=0, onchange='update_output_video_encoders.call(this);') }}
+        {% endcall %}
+
+        {% call(id, name) float_label(name='video_encoders[%d].maxrate'|format(index), label='maxrate kbps', width='7ch') %}
+          {{ input(id, name, get_json_conf(name), 'required', type='number', min=0, onchange='update_output_video_encoders.call(this);') }}
+        {% endcall %}
+
+        <button type="button" class="btn btn-outline-primary btn-encoder-control" onclick="video_encoder_add.call(this, event);"><span class="fa fa-plus"></span></button>
+        <button type="button" class="btn btn-outline-danger btn-encoder-control" onclick="video_encoder_delete.call(this, event);"><span class="fa fa-times"></span></button>
+      {% endcall %}
+    {% endcall %}
+  {% endfor %}
+  <script>
+      function validator_update() {
+          $('[data-toggle="validator"]').validator('update');
+      }
+
+      function get_encoder_count(encoder) {
+          return $('select[name^="' + encoder + '_encoders["][name$="].codec"]').length;
+      }
+
+      function update_output_video_encoders() {
+          $('select[name$="].video_encoders[]"]').trigger('show.bs.select');
+      }
+
+      function update_output_audio_encoders() {
+          $('select[name$="].audio_encoders[]"]').trigger('show.bs.select');
+      }
+
+      function output_encoder_delete(encoder, deleted) {
+          $('select[name^="outputs["][name$="].' + encoder + '_encoders[]"]').each(function () {
+              var val = $(this).val();
+
+              $('option', $(this)).each(function () {
+                  var index = parseInt($(this).val());
+
+                  if (index === deleted) {
+                      $(this).remove();
+                  } else if (index > deleted) {
+                      $(this).val($(this).val() - 1);
+                  }
+              });
+
+              var new_val = [];
+              val.forEach(function (v) {
+                  var i = parseInt(v);
+                  if (i !== deleted) {
+                      new_val.push((i > deleted ? i - 1 : i).toString());
+                  }
+              });
+              $(this).selectpicker('val', new_val);
+              $(this).selectpicker('refresh');
+          });
+      }
+
+      function output_encoder_add(encoder, added) {
+          $('select[name^="outputs["][name$="].' + encoder + '_encoders[]"]').each(function () {
+              var val = $(this).val();
+
+              $('option', $(this)).each(function () {
+                  var index = parseInt($(this).val());
+
+                  if (index >= added) {
+                      $(this).val($(this).val() + 1);
+                  }
+              });
+
+              var new_val = [];
+              val.forEach(function (v) {
+                  var i = parseInt(v);
+                  new_val.push((i >= added ? i + 1 : i).toString());
+              });
+              $(this).selectpicker('val', new_val);
+              $(this).selectpicker('refresh');
+          });
+      }
+
+      function video_encoder_id_update(form_group, old_id, new_id) {
+          set_name_index(form_group, 'video_encoders[%d].codec', old_id, new_id);
+          set_name_index(form_group, 'video_encoders[%d].size', old_id, new_id);
+          set_name_index(form_group, 'video_encoders[%d].rc', old_id, new_id);
+          set_name_index(form_group, 'video_encoders[%d].bitrate', old_id, new_id);
+          set_name_index(form_group, 'video_encoders[%d].maxrate', old_id, new_id);
+
+          $('label > div', form_group).html('Video Encoder #' + (new_id + 1));
+          form_group.attr('data-encoder-id', new_id);
+      }
+
+      function video_encoder_size_custom(event) {
+          event.stopPropagation();
+
+          var input = $(this).prev('input');
+          var result = input.val().match(/(\d+)\s*x\s*(\d+)/);
+          var select_id = $(this).closest('div.inner.show').attr('id');
+          var select = $('[aria-owns="' + select_id + '"]').prev('select');
+
+          if (result) {
+              var width = parseInt(result[1]);
+              var height = parseInt(result[2]);
+
+              var label = result[1] + 'x' + result[2];
+              if (!$('option[value="' + label +'"]', select).length) {
+                  var index = get_name_index(select);
+                  var option = null;
+
+                  $('option', select).each(function () {
+                      var res = $(this).val().match(/(\d+)\s*x\s*(\d+)/);
+                      if (res && ((width << 16) | height) > ((parseInt(res[1]) << 16) | parseInt(res[2])) && !option) {
+                          option = $(this);
+                      }
+                  });
+
+                  if (!option)
+                      option = $('option', select).eq(-1);
+
+                  option.before($('<option value="' + label + '" data-content=\'' + colorful_label(label) + '\'></option>'));
+                  select.selectpicker('refresh');
+              }
+              select.selectpicker('val', label);
+          } else {
+              confirm_box('Invalid resolution: ' + input.val());
+          }
+
+          input.val('');
+      }
+
+      function video_encoder_reload(main_codec_val, form_group) {
+          var size = $('[name$=".size"]', form_group);
+          var rc = $('[name$=".rc"]', form_group);
+          var bitrate = $('[name$=".bitrate"]', form_group);
+          var maxrate = $('[name$=".maxrate"]', form_group);
+
+          if (main_codec_val === 'copy') {
+              size.prop('disabled', true).closest('.has-float-label').hide();
+              rc.prop('disabled', true).closest('.has-float-label').hide();
+              bitrate.prop('disabled', true).closest('.has-float-label').hide();
+              maxrate.prop('disabled', true).closest('.has-float-label').hide();
+              $('.btn-encoder-control', form_group).hide();
+          } else {
+              size.prop('disabled', false).closest('.has-float-label').show();
+              rc.prop('disabled', false).closest('.has-float-label').show();
+              bitrate.prop('disabled', false).closest('.has-float-label').show();
+              if (rc.val() === 'cbr') {
+                  maxrate.prop('disabled', true).closest('.has-float-label').hide();
+              } else if (rc.val() === 'vbr') {
+                  maxrate.prop('disabled', false).closest('.has-float-label').show();
+              }
+              $('.btn-encoder-control', form_group).show();
+          }
+      }
+      function video_encoder_onchange() {
+          var form_group = $(this).closest('.form-group');
+          var index = get_name_index($(this));
+          var main_codec_val = $('[name="video_encoders[0].codec"]').val();
+
+          if (index === 0) {
+              selectpicker_options_toggle.call(this, ['server_id'], ['h264_nvenc', 'h264_qsv', 'libx264']);
+
+              $('.video_codec_option').each(function (index) {
+                  var div = $(this).closest('.form-group.row');
+
+                  if ($('[name="video_encoders[0].codec"]', div).length === 0) {
+                      if (main_codec_val === 'copy') {
+                          div.slideUp();
+                      } else if ($('input,option:enabled,select[name$="].video_encoders[]"]', form_group).length > 0) {
+                          div.slideDown();
+                      }
+
+                      div.trigger('change');
+                  } else {
+                      video_encoder_reload(main_codec_val, div);
+                  }
+              });
+
+              $('[name="hwaccel_method"]').trigger('change');
+              $('[name="hwaccel_device"]').trigger('change');
+              $('[name="deinterlace_method"]').trigger('change');
+              $('[name="video_preset"]').trigger('change');
+              $('[name="video_profile"]').trigger('change');
+              $('[name="video_level"]').trigger('change');
+              $('[name="subtitle_codec"]').trigger('change');
+          } else {
+              selectpicker_options_toggle.call(this, ['server_id', 'video_encoders[0].codec'], ['h264_nvenc', 'h264_qsv', 'libx264']);
+              video_encoder_reload(main_codec_val, form_group);
+          }
+
+          update_output_video_encoders();
+          validator_update();
+      }
+
+      function video_encoder_delete(event) {
+          if (get_encoder_count('video') === 1) {
+              validator_message(this, 'At least one of video encoder settings is required');
+              return;
+          }
+
+          var form_group = $(this).closest('.form-group');
+          var deleted = parseInt(form_group.attr('data-encoder-id'));
+
+          output_encoder_delete('video', deleted);
+          form_group.remove();
+          $('[name^="video_encoders["][name$="].codec"]').each(function () {
+              var form_group = $(this).closest('.form-group');
+              var id = parseInt(form_group.attr('data-encoder-id'));
+              if (id > deleted)
+                  video_encoder_id_update(form_group, id, id - 1);
+          });
+
+          $('[name="video_encoders[0].codec"]').trigger('change');
+          validator_update();
+      }
+
+      function video_encoder_add() {
+          var count = get_encoder_count('video');
+          if (count > 20) {
+              validator_message(this, 'Too many video encoders');
+              return;
+          }
+
+          var form_group = $(this).closest('.form-group');
+          var id = parseInt(form_group.attr('data-encoder-id'));
+          var clone = form_group.clone();
+
+          video_encoder_id_update(clone, id, id + 1);
+          for (var i = count - 1; i > id; i--)
+              video_encoder_id_update($('[name="video_encoders[' + i + '].codec"]').closest('.form-group'), i, i + 1);
+
+          output_encoder_add('video', id + 1);
+          clone.find('input').val('');
+          clone.find('.bootstrap-select').replaceWith(function() { return $('select', this); });
+          clone.find('.selectpicker').selectpicker('render');
+          clone.insertAfter(form_group);
+
+          $('[name="video_encoders[' + (id + 1) + '].codec"]').trigger('change');
+      }
+
+      $('[name^="video_encoders["][name$="].codec"]').trigger('change');
+      $(function () {
+          validator_update();
+      });
+  </script>
+{% endmacro %}
+
+
+{% macro video_preset_option(prefix=None) %}
+  {% call(id, name) form_group(name=join2(prefix, 'video_preset'),
+                               label='Video Preset',
+                               class=join2('video_codec_option',
+                                           'stream_profile_option' if prefix is none else None, delimiter=' '),
+                               tooltip='Preset option will effect the encoding performance. Normally use medium '
+                                       'preset is okay. If you want to get best quality you can set it to Slow or '
+                                       'High Quality preset. but more CPU/GPU will be used than medium preset.') %}
+    {% call(name) select(id, name, default=['superfast', 'medium']) %}
+      {{ select_option('ultrafast', get_json_conf(name), label='Ultrafast', **{'data-video_encoders[0].codec': ['libx264', 'libx265']}) }}
+      {{ select_option('superfast', get_json_conf(name), label='Superfast', **{'data-video_encoders[0].codec': ['libx264', 'libx265']}) }}
+      {{ select_option('veryfast', get_json_conf(name), label='Veryfast', **{'data-video_encoders[0].codec': ['libx264', 'libx265']}) }}
+      {{ select_option('faster', get_json_conf(name), label='Faster', **{'data-video_encoders[0].codec': ['libx264', 'libx265']}) }}
+      {{ select_option('fast', get_json_conf(name), label='Fast', **{'data-video_encoders[0].codec': ['libx264', 'libx265']}) }}
+      {{ select_option('medium', get_json_conf(name), label='Medium', **{'data-video_encoders[0].codec': ['libx264', 'libx265']}) }}
+      {{ select_option('slow', get_json_conf(name), label='Slow', **{'data-video_encoders[0].codec': ['libx264', 'libx265']}) }}
+      {{ select_option('slower', get_json_conf(name), label='Slower', **{'data-video_encoders[0].codec': ['libx264', 'libx265']}) }}
+      {{ select_option('veryslow', get_json_conf(name), label='Veryslow', **{'data-video_encoders[0].codec': ['libx264', 'libx265']}) }}
+
+      {{ select_option('veryfast', get_json_conf(name), label='Veryfast', **{'data-video_encoders[0].codec': ['h264_qsv', 'hevc_qsv']}) }}
+      {{ select_option('faster', get_json_conf(name), label='Faster', **{'data-video_encoders[0].codec': ['h264_qsv', 'hevc_qsv']}) }}
+      {{ select_option('fast', get_json_conf(name), label='Fast', **{'data-video_encoders[0].codec': ['h264_qsv', 'hevc_qsv']}) }}
+      {{ select_option('medium', get_json_conf(name), label='Medium', **{'data-video_encoders[0].codec': ['h264_qsv', 'hevc_qsv']}) }}
+      {{ select_option('slow', get_json_conf(name), label='Slow', **{'data-video_encoders[0].codec': ['h264_qsv', 'hevc_qsv']}) }}
+      {{ select_option('slower', get_json_conf(name), label='Slower', **{'data-video_encoders[0].codec': ['h264_qsv', 'hevc_qsv']}) }}
+      {{ select_option('veryslow', get_json_conf(name), label='Veryslow', **{'data-video_encoders[0].codec': ['h264_qsv', 'hevc_qsv']}) }}
+
+      {{ select_option('fast', get_json_conf(name), label='Fast', **{'data-video_encoders[0].codec': ['h264_nvenc', 'hevc_nvenc', 'av1_nvenc']}) }}
+      {{ select_option('medium', get_json_conf(name), label='Medium', **{'data-video_encoders[0].codec': ['h264_nvenc', 'hevc_nvenc', 'av1_nvenc']}) }}
+      {{ select_option('slow', get_json_conf(name), label='Slow', **{'data-video_encoders[0].codec': ['h264_nvenc', 'hevc_nvenc', 'av1_nvenc']}) }}
+      {{ select_option('hp', get_json_conf(name), label='High Performance', **{'data-video_encoders[0].codec': ['h264_nvenc', 'hevc_nvenc']}) }}
+      {{ select_option('hq', get_json_conf(name), label='High Quality', **{'data-video_encoders[0].codec': ['h264_nvenc', 'hevc_nvenc']}) }}
+      {{ select_option('llhp', get_json_conf(name), label='Low Latency High Performance', **{'data-video_encoders[0].codec': ['h264_nvenc', 'hevc_nvenc']}) }}
+      {{ select_option('llhq', get_json_conf(name), label='Low Latency High Quality', **{'data-video_encoders[0].codec': ['h264_nvenc', 'hevc_nvenc']}) }}
+
+      {{ select_option('p1', get_json_conf(name), label='P1', tag=['Fastest'], **{'data-video_encoders[0].codec': ['h264_nvenc', 'hevc_nvenc', 'av1_nvenc']}) }}
+      {{ select_option('p2', get_json_conf(name), label='P2', tag=['Faster'], **{'data-video_encoders[0].codec': ['h264_nvenc', 'hevc_nvenc', 'av1_nvenc']}) }}
+      {{ select_option('p3', get_json_conf(name), label='P3', tag=['Fast'], **{'data-video_encoders[0].codec': ['h264_nvenc', 'hevc_nvenc', 'av1_nvenc']}) }}
+      {{ select_option('p4', get_json_conf(name), label='P4', tag=['Medium'], **{'data-video_encoders[0].codec': ['h264_nvenc', 'hevc_nvenc', 'av1_nvenc']}) }}
+      {{ select_option('p5', get_json_conf(name), label='P5', tag=['Slow'], **{'data-video_encoders[0].codec': ['h264_nvenc', 'hevc_nvenc', 'av1_nvenc']}) }}
+      {{ select_option('p6', get_json_conf(name), label='P6', tag=['Slower'], **{'data-video_encoders[0].codec': ['h264_nvenc', 'hevc_nvenc', 'av1_nvenc']}) }}
+      {{ select_option('p7', get_json_conf(name), label='P7', tag=['Slowest'], **{'data-video_encoders[0].codec': ['h264_nvenc', 'hevc_nvenc', 'av1_nvenc']}) }}
+    {% endcall %}
+
+    <script>
+        $({{ selector(name) }}).on('change', function () {
+            selectpicker_options_toggle.call(this, ['video_encoders[0].codec'], ['superfast', 'medium']);
+        }).trigger('change');
+    </script>
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro video_profile_option(prefix=None) %}
+  {% call(id, name) form_group(name=join2(prefix, 'video_profile'),
+                               label='Video Profile',
+                               class=join2('video_codec_option',
+                                           'stream_profile_option' if prefix is none else None, delimiter=' '),
+                               tooltip='High profile is recommended. if the stream is for mobile device and consider '
+                                       'the compatibility, use main or baseline profile please. Warning: most of '
+                                       'browser can not decoding yuv444p stream. so you may see a black screen in '
+                                       'the web player.') %}
+    {% call(name) select(id, name, default='high') %}
+      {{ select_option('baseline', get_json_conf(name), label='Baseline', **{'data-video_encoders[0].codec': ['h264_qsv', 'h264_nvenc', 'libx264']}) }}
+      {{ select_option('main', get_json_conf(name), label='Main', **{'data-video_encoders[0].codec': ['h264_qsv', 'h264_nvenc', 'libx264', 'hevc_qsv', 'hevc_nvenc', 'libx265']}) }}
+      {{ select_option('high', get_json_conf(name), label='High', **{'data-video_encoders[0].codec': ['h264_qsv', 'h264_nvenc', 'libx264']}) }}
+      {{ select_option('high444p', get_json_conf(name), label='High444P', **{'data-video_encoders[0].codec': ['h264_nvenc']}) }}
+
+      <!--
+      {{ select_option('high10', get_json_conf(name), label='High10', **{'data-video_encoders[0].codec': ['libx264']}) }}
+      {{ select_option('high422', get_json_conf(name), label='High422', **{'data-video_encoders[0].codec': ['libx264']}) }}
+      {{ select_option('high444', get_json_conf(name), label='High444', **{'data-video_encoders[0].codec': ['libx264']}) }}
+      -->
+
+      {{ select_option('main10', get_json_conf(name), label='Main10', **{'data-video_encoders[0].codec': ['hevc_qsv', 'hevc_nvenc', 'libx265']}) }}
+      {{ select_option('main12', get_json_conf(name), label='Main12', **{'data-video_encoders[0].codec': ['libx265']}) }}
+      {{ select_option('mainsp', get_json_conf(name), label='MainSP', **{'data-video_encoders[0].codec': ['hevc_qsv']}) }}
+      {{ select_option('rext', get_json_conf(name), label='Rext', **{'data-video_encoders[0].codec': ['hevc_nvenc']}) }}
+    {% endcall %}
+
+    <script>
+        $({{ selector(name) }}).on('change', function () {
+            selectpicker_options_toggle.call(this, ['video_encoders[0].codec'], ['high', 'main']);
+        }).trigger('change');
+    </script>
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro video_level_option(prefix=None) %}
+  {% call(id, name) form_group(name=join2(prefix, 'video_level'),
+                               label='Video Level',
+                               class=join2('video_codec_option',
+                                           'stream_profile_option' if prefix is none else None, delimiter=' '),
+                               tooltip='The level option specifies the maximum picture resolution, frame rate and '
+                                       'bitrate that the decoder may use.') %}
+    {% call(name) select(id, name, default='auto') %}
+      {{ select_option('auto', get_json_conf(name), label='Auto', **{'data-video_encoders[0].codec': ['h264_qsv', 'h264_nvenc', 'libx264', 'hevc_qsv', 'hevc_nvenc', 'libx265', 'av1_nvenc']}) }}
+      {{ select_option('3.0', get_json_conf(name), label='3.0', **{'data-video_encoders[0].codec': ['h264_qsv', 'h264_nvenc', 'libx264', 'hevc_qsv', 'hevc_nvenc', 'libx265', 'av1_nvenc']}) }}
+      {{ select_option('3.1', get_json_conf(name), label='3.1', **{'data-video_encoders[0].codec': ['h264_qsv', 'h264_nvenc', 'libx264', 'hevc_qsv', 'hevc_nvenc', 'libx265', 'av1_nvenc']}) }}
+      {{ select_option('3.2', get_json_conf(name), label='3.2', **{'data-video_encoders[0].codec': ['h264_qsv', 'h264_nvenc', 'libx264', 'av1_nvenc']}) }}
+      {{ select_option('3.3', get_json_conf(name), label='3.3', **{'data-video_encoders[0].codec': ['av1_nvenc']}) }}
+      {{ select_option('4.0', get_json_conf(name), label='4.0', **{'data-video_encoders[0].codec': ['h264_qsv', 'h264_nvenc', 'libx264', 'hevc_qsv', 'hevc_nvenc', 'libx265', 'av1_nvenc']}) }}
+      {{ select_option('4.1', get_json_conf(name), label='4.1', **{'data-video_encoders[0].codec': ['h264_qsv', 'h264_nvenc', 'libx264', 'hevc_qsv', 'hevc_nvenc', 'libx265', 'av1_nvenc']}) }}
+      {{ select_option('4.2', get_json_conf(name), label='4.2', **{'data-video_encoders[0].codec': ['h264_qsv', 'h264_nvenc', 'libx264', 'av1_nvenc']}) }}
+      {{ select_option('4.3', get_json_conf(name), label='4.3', **{'data-video_encoders[0].codec': ['av1_nvenc']}) }}
+      {{ select_option('5.0', get_json_conf(name), label='5.0', **{'data-video_encoders[0].codec': ['h264_qsv', 'h264_nvenc', 'libx264', 'hevc_qsv', 'hevc_nvenc', 'libx265', 'av1_nvenc']}) }}
+      {{ select_option('5.1', get_json_conf(name), label='5.1', **{'data-video_encoders[0].codec': ['h264_qsv', 'h264_nvenc', 'libx264', 'hevc_qsv', 'hevc_nvenc', 'libx265', 'av1_nvenc']}) }}
+      {{ select_option('5.2', get_json_conf(name), label='5.2', **{'data-video_encoders[0].codec': ['hevc_qsv', 'hevc_nvenc', 'libx265', 'av1_nvenc']}) }}
+      {{ select_option('5.3', get_json_conf(name), label='5.3', **{'data-video_encoders[0].codec': ['av1_nvenc']}) }}
+      {{ select_option('6.0', get_json_conf(name), label='6.0', **{'data-video_encoders[0].codec': ['hevc_qsv', 'hevc_nvenc', 'libx265', 'av1_nvenc']}) }}
+      {{ select_option('6.1', get_json_conf(name), label='6.1', **{'data-video_encoders[0].codec': ['hevc_qsv', 'hevc_nvenc', 'libx265', 'av1_nvenc']}) }}
+      {{ select_option('6.2', get_json_conf(name), label='6.2', **{'data-video_encoders[0].codec': ['hevc_qsv', 'hevc_nvenc', 'libx265', 'av1_nvenc']}) }}
+      {{ select_option('6.3', get_json_conf(name), label='6.3', **{'data-video_encoders[0].codec': ['av1_nvenc']}) }}
+      {{ select_option('7.0', get_json_conf(name), label='7.0', **{'data-video_encoders[0].codec': ['av1_nvenc']}) }}
+      {{ select_option('7.1', get_json_conf(name), label='7.1', **{'data-video_encoders[0].codec': ['av1_nvenc']}) }}
+      {{ select_option('7.2', get_json_conf(name), label='7.2', **{'data-video_encoders[0].codec': ['av1_nvenc']}) }}
+      {{ select_option('7.3', get_json_conf(name), label='7.3', **{'data-video_encoders[0].codec': ['av1_nvenc']}) }}
+    {% endcall %}
+
+    <script>
+        $({{ selector(name) }}).on('change', function () {
+            selectpicker_options_toggle.call(this, ['video_encoders[0].codec'], ['auto']);
+        }).trigger('change');
+    </script>
+  {% endcall %}
+{% endmacro %}
+
+
+<!-- Video Frame Rate -->
+{% macro frame_rate_option() %}
+  {% call(id, name) form_group(name='frame_rate',
+                               label='Video Frame Rate',
+                               class='video_codec_option stream_profile_option',
+                               hide=get_json_conf('video_encoders[0].codec') == 'copy',
+                               tooltip='The output framerate will be same as source stream if Auto is selected. '
+                                       'Sometimes you want to transcoding the stream to the lowest bitrate and '
+                                       'without too much quality loss. decrease framerate to 25 or 30 fps is a '
+                                       'good idea. Warning: increase the framerate than source stream is totally '
+                                       'no necessary. the motion will not looks fast than before. but also it '
+                                       'will decrease the piciture quality. Note: the framerate must be able to '
+                                       'be divided by keyframe interval with no remainder.') %}
+    <div class="input-group">
+      {% call(name) select(id, name, default='auto') %}
+        {{ select_option('auto', get_json_conf(name), label='Auto') }}
+        {{ select_option('24000/1001', get_json_conf(name), label='23.98') }}
+        {{ select_option('24000/1000', get_json_conf(name), label='24') }}
+        {{ select_option('25000/1000', get_json_conf(name), label='25') }}
+        {{ select_option('30000/1001', get_json_conf(name), label='29.97') }}
+        {{ select_option('30000/1000', get_json_conf(name), label='30') }}
+        {{ select_option('50000/1000', get_json_conf(name), label='50') }}
+        {{ select_option('60000/1001', get_json_conf(name), label='59.94') }}
+        {{ select_option('60000/1000', get_json_conf(name), label='60') }}
+      {% endcall %}
+      <span class="input-group-text">fps</span>
+    </div>
+  {% endcall %}
+{% endmacro %}
+
+
+<!-- Key Frame Interval -->
+{% macro keyframe_interval_option() %}
+  {% call(id, name) form_group(name='keyframe_interval',
+                               label='Keyframe Interval',
+                               class='video_codec_option stream_profile_option',
+                               hide=get_json_conf('video_encoders[0].codec') == 'copy',
+                               tooltip='This option may effect the stream latency. recommend 250 by default. '
+                                       'Note: please setup this option to the multiples of framerate for prevent '
+                                       'the HLS segment related problem.') %}
+    <div class="input-group">
+      {{ input(id, name, get_json_conf(name), type='number', min=0, max=250, default=250) }}
+      <span class="input-group-text">frames</span>
+    </div>
+  {% endcall %}
+{% endmacro %}
+
+
+<!-- Video Deinterlace -->
+{% macro deinterlace_option() %}
+  {% call(id, name) form_group(name='deinterlace',
+                               label='Video Deinterlace',
+                               class='video_codec_option stream_profile_option',
+                               hide=get_json_conf('video_encoders[0].codec') == 'copy',
+                               tooltip='This option is for convert the deinterlaced video to progressive. Setup '
+                                       'this option only when the source stream is interlaced. Potentially '
+                                       'deinterlace a progressive stream may get unexpect result like glitching. '
+                                       'Note: this option will increase the GPU RAM overhead.') %}
+    <div class="input-group">
+      {% call(name) select(id, name, default='') %}
+        {{ select_option('yes', get_json_conf(name), label='Yes') }}
+        {{ select_option('no', get_json_conf(name), label='No') }}
+      {% endcall %}
+
+      <button type="button" class="btn btn-primary"
+              data-toggle="collapse" data-target="#deinterlace_collapse">
+        <i class="fa fa-cog"></i>
+      </button>
+    </div>
+  {% endcall %}
+
+  <div class="collapse" id="deinterlace_collapse">
+    {% call(id, name) form_group(name='deinterlace_method',
+                                 class='video_codec_option stream_profile_option',
+                                 hide=get_json_conf('video_encoders[0].codec') == 'copy',
+                                 tooltip='The Auto deinterlace method will be used by default. it will use hardware '
+                                         'for deinterlace as far as possible. if you have special requirements '
+                                         'about deinterlace, you can choose a suitable method for deinterlace.') %}
+      {% call(id, name) float_label(name=name, label='deinterlace method') %}
+        {% call(name) select(id, name, default='auto', **{'data-size': false}) %}
+          {{ select_option('auto', get_json_conf(name), label='Auto') }}
+          {{ select_option('adaptive_cuvid', get_json_conf(name), tags=['Adaptive', 'CUVID'], **{'data-video_encoders[0].codec': ['h264_nvenc', 'hevc_nvenc', 'av1_nvenc'], 'data-hwaccel_method': ['full', 'partial']}) }}
+          {{ select_option('adaptive_drop_cuvid', get_json_conf(name), tags=['Adaptive', 'CUVID', 'Drop Second Field'], **{'data-video_encoders[0].codec': ['h264_nvenc', 'hevc_nvenc', 'av1_nvenc'], 'data-hwaccel_method': ['full', 'partial']}) }}
+          {{ select_option('yadif_cuda', get_json_conf(name), tags=['Yadif', 'CUDA'], **{'data-video_encoders[0].codec': ['h264_nvenc', 'hevc_nvenc', 'av1_nvenc'], 'data-hwaccel_method': ['full', 'partial', 'encoding_only']}) }}
+          {{ select_option('advanced_qsv', get_json_conf(name), tags=['Advanced', 'QuickSync'], **{'data-video_encoders[0].codec': ['h264_qsv', 'hevc_qsv'], 'data-hwaccel_method': ['full', 'partial', 'encoding_only']}) }}
+          {{ select_option('yadif', get_json_conf(name), tags=['Yadif']) }}
+        {% endcall %}
+        <script>
+            $({{ selector(name) }}).on('change', function () {
+                selectpicker_options_toggle.call(this, ['video_encoders[0].codec', 'hwaccel_method'], ['auto']);
+            }).trigger('change');
+        </script>
+      {% endcall %}
+    {% endcall %}
+  </div>
+{% endmacro %}
+
+
+<!-- Video Display Aspect Ratio -->
+{% macro display_aspect_ratio_option() %}
+  {% call(id, name) form_group(name='display_aspect_ratio',
+                               label='Display Aspect Ratio',
+                               class='video_codec_option stream_profile_option',
+                               hide=get_json_conf('video_encoders[0].codec') == 'copy') %}
+    {% call(name) select(id, name, default='auto') %}
+      {{ select_option('auto', get_json_conf(name), label='Auto') }}
+      {{ select_option('21/9', get_json_conf(name), label='21:9') }}
+      {{ select_option('17/9', get_json_conf(name), label='17:9') }}
+      {{ select_option('16/9', get_json_conf(name), label='16:9') }}
+      {{ select_option('16/10', get_json_conf(name), label='16:10') }}
+      {{ select_option('5/3', get_json_conf(name), label='5:3') }}
+      {{ select_option('3/2', get_json_conf(name), label='3:2') }}
+      {{ select_option('4/3', get_json_conf(name), label='4:3') }}
+      {{ select_option('5/4', get_json_conf(name), label='5:4') }}
+      {{ select_option('1/1', get_json_conf(name), label='1:1') }}
+    {% endcall %}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro pixel_format_option() %}
+  {% call(id, name) form_group(name='pixel_format',
+                               label='Video Pixel Format',
+                               class='video_codec_option stream_profile_option',
+                               hide=get_json_conf('video_encoders[0].codec') == 'copy',
+                               tooltip='If the pixel format of source stream is other than yuv420p, maybe you '
+                                       'will need setup this option for force the encoding pixel format to '
+                                       'yuv420p. For live stream, yuv420p is better than all other formats.') %}
+    {% call(name) select(id, name, default='auto') %}
+      {{ select_option('auto', get_json_conf(name), label='Auto') }}
+      {{ select_option('yuv420p', get_json_conf(name), label='YUV420P') }}
+      {{ select_option('yuv422p', get_json_conf(name), label='YUV422P') }}
+      {{ select_option('yuv444p', get_json_conf(name), label='YUV444P') }}
+    {% endcall %}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro overlay_option() %}
+  {% call(id, name) form_group(name='overlay_filename',
+                               label='Overlay Image',
+                               class='video_codec_option stream_profile_option',
+                               hide=get_json_conf('video_encoders[0].codec') == 'copy',
+                               tooltip='This option is for overlay the logo or watermark. please go to '
+                                       '\'File > Manage File\' tab upload your logo or watermark image first.') %}
+    <div class="input-group">
+      {% call(name) select(id, name, default='', title='\u00a0') %}
+        {{ select_option('', get_json_conf(name), label='\u00a0') }}
+        {% for filename in get_files(extensions=video_extensions + image_extensions) %}
+          {{ select_option(filename, get_json_conf(name), label=filename) }}
+        {% endfor %}
+      {% endcall %}
+
+      <button class="btn btn-primary" type="button" data-toggle="modal" data-target="#overlay-file-upload-modal">
+        <i class="fa fa-cloud-upload-alt"></i>
+      </button>
+
+      {{ file_upload_modal('overlay-file-upload-modal', url_for('file.upload'), types=['image', 'video'], target='#' + id) }}
+    </div>
+
+    <script>
+        $(function () {
+            $({{ selector(name) }}).on('change', function () {
+                var x = $('input[name="overlay_x"]');
+                var y = $('input[name="overlay_y"]');
+                var opacity = $('input[name="overlay_opacity"]');
+
+                if ($(this).val() === '') {
+                    x.prop('readonly', true);
+                    y.prop('readonly', true);
+                    opacity.prop('readonly', true);
+                } else {
+                    x.prop('readonly', false);
+                    y.prop('readonly', false);
+                    opacity.prop('readonly', false);
+                }
+            }).trigger('change');
+        });
+    </script>
+  {% endcall %}
+
+  {% call(id, name) form_group(class='video_codec_option stream_profile_option',
+                               hide=get_json_conf('video_encoders[0].codec') == 'copy',
+                               tooltip='main_w/W, main_h/H is the width and height of output video. '
+                                       'overlay_w/w, overlay_h/h is the width and height of watermark/logo image. '
+                                       'examples: \'x=0, y=0\' is top left, \'x=W-w, y=0\' is top right, '
+                                       '\'x=0, y=H-h\' is bottom left, \'x=W-w, y=H-h\' is bottom right, '
+                                       '\'x=(W-w)/2, y=(H-h)/2\' is centered.') %}
+    {% call() float_group() %}
+      {% call(id, name) float_label(name='overlay_x', label='x', width='33.3%') %}
+        {{ input(id, name, get_json_conf(name), default='W-w') }}
+      {% endcall %}
+      {% call(id, name) float_label(name='overlay_y', label='y', width='33.3%') %}
+        {{ input(id, name, get_json_conf(name), default='0') }}
+      {% endcall %}
+      {% call(id, name) float_label(name='overlay_opacity', label='opacity', width='33.3%') %}
+        {{ input(id, name, get_json_conf(name), default='1', type='number', min=0, max=1, step=0.001) }}
+      {% endcall %}
+    {% endcall %}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro drawtext_option() %}
+  {% call(id, name) form_group(name='drawtext_text',
+                               label='Overlay Text',
+                               class='video_codec_option stream_profile_option',
+                               hide=get_json_conf('video_encoders[0].codec') == 'copy') %}
+    {% call() float_group() %}
+      {% call(id, name) float_label(name, label='text', width='18ch') %}
+        {{ input(id, name, get_json_conf(name)) }}
+      {% endcall %}
+
+      {% call(id, name) float_label('drawtext_x', label='x', width='4ch') %}
+        {{ input(id, name, get_json_conf(name)) }}
+      {% endcall %}
+
+      {% call(id, name) float_label('drawtext_y', label='y', width='4ch') %}
+        {{ input(id, name, get_json_conf(name)) }}
+      {% endcall %}
+
+      <button type="button" class="btn btn-primary" data-toggle="collapse" data-target="#overlay-text-collapse">
+        <i class="fa fa-cog"></i>
+      </button>
+    {% endcall %}
+  {% endcall %}
+
+  <div class="collapse" id="overlay-text-collapse">
+    {% call(id, name) form_group(class='video_codec_option stream_profile_option',
+                             hide=get_json_conf('video_encoders[0].codec') == 'copy',
+                             tooltip='Font color can be specified in name format, like: '
+                                     'black, white, blue, darkblue. or you can spcify any '
+                                     'color in hex color code format, like: 0x8e44ad, or #84eead') %}
+      {% call() float_group() %}
+        {% call(id, name) float_label(name='drawtext_font', label='font', width='50%') %}
+          {% call(name) select(id, name, default=config.FONT_DEFAULT) %}
+            {% for font in get_fonts() %}
+              {{ select_option(font, get_json_conf(name), tags=[font.replace('-', ' ').rsplit('.', 1)[0]]) }}
+            {% endfor %}
+          {% endcall %}
+        {% endcall %}
+
+        {% call(id, name) float_label('drawtext_fontsize', label='font size', width='17%') %}
+          {{ input(id, name, get_json_conf(name), default=24, type='number', min=0) }}
+        {% endcall %}
+
+        {% call(id, name) float_label('drawtext_fontcolor', label='font color', width='17%') %}
+          {{ input(id, name, get_json_conf(name)) }}
+        {% endcall %}
+
+        {% call(id, name) float_label('drawtext_alpha', label='opacity', width='16%') %}
+          {{ input(id, name, get_json_conf(name), type='number', min=0, max=1, step=0.001) }}
+        {% endcall %}
+      {% endcall %}
+    {% endcall %}
+  </div>
+{% endmacro %}
+
+
+{% macro video_delogo_option() %}
+  {% call(id, name) form_group(label='Video Delogo',
+                               class='video_codec_option',
+                               hide=get_json_conf('video_encoders[0].codec') == 'copy',
+                               tooltip='This option is used to remove any static logo or watermark. '
+                                       '\'x\' and \'y\' is the top left corner coordinates of the logo. '
+                                       '\'width\' and \'height\' is the width and height of the logo or watermark. '
+                                       '\'x\', \'y\', \'width\' and \'height\' both are required for remove '
+                                       'any static logo or watermark.') %}
+    {% call() float_group() %}
+      {% call(id, name) float_label(name='delogo_x', label='x', width='25%') %}
+        {{ input(id, name, get_json_conf(name), type='number', min=0, max=65535) }}
+      {% endcall %}
+
+      {% call(id, name) float_label(name='delogo_y', label='y', width='25%') %}
+        {{ input(id, name, get_json_conf(name), type='number', min=0, max=65535) }}
+      {% endcall %}
+
+      {% call(id, name) float_label(name='delogo_w', label='width', width='25%') %}
+        {{ input(id, name, get_json_conf(name), type='number', min=1, max=65535) }}
+      {% endcall %}
+
+      {% call(id, name) float_label(name='delogo_h', label='height', width='25%') %}
+        {{ input(id, name, get_json_conf(name), type='number', min=1, max=65535) }}
+      {% endcall %}
+    {% endcall %}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro video_cvdelogo_option() %}
+  {% call(id, name) form_group(name='cvdelogo_filenames[]',
+                               label='Computer Vision Delogo',
+                               class='video_codec_option',
+                               hide=get_json_conf('video_encoders[0].codec') == 'copy',
+                               tooltip='This option is for use Computer Vision to detect any dynmaic logo or '
+                                       'watermarks. You will need prepare a sample for the logo. so the program '
+                                       'will be able to know the logo you want to detect and remove. '
+                                       'The implementation is color and scale invariant, even the logo changed '
+                                       'the color, size and location, the program still be able to detect it. '
+                                       'To increase the chance of detect the logo, please make sure the source stream '
+                                       'has the best quality. ') %}
+    <div class="input-group">
+      {% call(name) select(id, name, 'multiple', title='\u00a0', **{'data-multiple-separator': ' '}) %}
+        {% for filename in get_files(extensions=['jpg', 'jpeg', 'png']) %}
+          {{ select_option(filename, get_json_conf(name), label=filename) }}
+        {% endfor %}
+      {% endcall %}
+
+      <button class="btn btn-primary" type="button" data-toggle="modal" data-target="#cvdelogo-file-upload-modal">
+        <i class="fa fa-cloud-upload-alt"></i>
+      </button>
+
+      <button type="button" class="btn btn-primary"
+              data-toggle="collapse" data-target="#cvdelogo-collapse">
+        <i class="fa fa-cog"></i>
+      </button>
+
+      {{ file_upload_modal('cvdelogo-file-upload-modal', url_for('file.upload'), types=['image'], target='#' + id) }}
+    </div>
+  {% endcall %}
+
+  <div class="collapse" id="cvdelogo-collapse">
+    {% call(id, name) form_group(name='cvdelogo_device',
+                                 class='stream_profile_option') %}
+      {% call(id, name) float_label(name=name, label='device') %}
+        {% call(name) select(id, name) %}
+          {% for server in get_servers() %}
+            {{ select_option(-1, get_json_conf(name), label='CPU', **{'data-server_id': server.id}) }}
+            {% for gpu in server.gpus %}
+              {% if gpu.name.startswith('Nvidia') %}
+                {{ select_option(gpu.index, get_json_conf(name), label=gpu.name,
+                             tags=['GPU%d'|format(gpu.index)],
+                             **{'data-server_id': server.id}) }}
+              {% endif %}
+            {% endfor %}
+          {% endfor %}
+        {% endcall %}
+      {% endcall %}
+      <script>
+          $({{ selector(name) }}).on('change', function () {
+              selectpicker_options_toggle.call(this, ['server_id']);
+          }).trigger('change');
+      </script>
+    {% endcall %}
+
+    {% call(id, name) form_group(name='cvdelogo_buffer_queue_size',
+                                 class='stream_profile_option',
+                                 tooltip='Set the number of frames to be buffered. larger value will increase the '
+                                         'memory usage. smaller value will decrease the memory usage but may have a '
+                                         'chance that miss the logo or watermark. recommend 250 ~ 750.') %}
+      {% call(id, name) float_label(name=name, label='buffer queue size') %}
+        {{ input(id, name, get_json_conf(name), type='number', min=25, default=768) }}
+      {% endcall %}
+    {% endcall %}
+
+    {% call(id, name) form_group(name='cvdelogo_detect_interval',
+                                 class='stream_profile_option',
+                                 tooltip='Set the detect interval. detect 1 time for every N frames. larger '
+                                         'value will decrease the CPU usage but may have a chance that miss the '
+                                         'logo or watermark. smaller value will increase the CPU usage but have '
+                                         'more chance to detect the logo or watermark. recommend 0 ~ 5. If the '
+                                         'logo or watermark is small or not clear. set this value to 0 please.') %}
+      {% call(id, name) float_label(name=name, label='detect interval') %}
+        {{ input(id, name, get_json_conf(name), type='number', min=0, max=25, default=1) }}
+      {% endcall %}
+    {% endcall %}
+
+    {% call(id, name) form_group(name='cvdelogo_score_min',
+                                 class='stream_profile_option',
+                                 tooltip='Set the minimal score. only the detect result with score larger than '
+                                         'this value will be considered as the logo or watermark. '
+                                         'recommend 0.4 ~ 0.5. if you see the too many error detection and the logo '
+                                         'or watermark is very clear actually. you can increase this value a little. '
+                                         'never setup this option larger than 0.6 unless you are expert.') %}
+      {% call(id, name) float_label(name=name, label='score min') %}
+        {{ input(id, name, get_json_conf(name), type='number', min=0.0, max=1.0, step=0.01, default=0.4) }}
+      {% endcall %}
+    {% endcall %}
+
+    {% call(id, name) form_group(class='stream_profile_option',
+                                 tooltip='This option is for set the multi-scale detection. if the real logo '
+                                         'or watermark in the stream may small or large a little. set this '
+                                         'option please. Note: it will increase the CPU usage.') %}
+      {% call() float_group() %}
+        {% call(id, name) float_label(name='cvdelogo_scale_min', label='scale min', width='50%') %}
+          {{ input(id, name, get_json_conf(name), type='number', min=0, max=1.0, step=0.001, default=0.75) }}
+        {% endcall %}
+
+        {% call(id, name) float_label(name='cvdelogo_scale_max', label='scale max', width='50%') %}
+          {{ input(id, name, get_json_conf(name), type='number', min=1.0, max=2.0, step=0.001, default=1.25) }}
+        {% endcall %}
+      {% endcall %}
+    {% endcall %}
+
+    {% call(id, name) form_group(class='stream_profile_option',
+                                 tooltip='Set the padding around the detect result. setup this option when the logo '
+                                         'or watermark is partial removed.') %}
+      {% call() float_group() %}
+        {% call(id, name) float_label(name='cvdelogo_padding_left', label='left', width='25%') %}
+          {{ input(id, name, get_json_conf(name), type='number', min=0, max=65535, default=10) }}
+        {% endcall %}
+
+        {% call(id, name) float_label(name='cvdelogo_padding_right', label='right', width='25%') %}
+          {{ input(id, name, get_json_conf(name), type='number', min=0, max=65535, default=10) }}
+        {% endcall %}
+
+        {% call(id, name) float_label(name='cvdelogo_padding_top', label='top', width='25%') %}
+          {{ input(id, name, get_json_conf(name), type='number', min=0, max=65535, default=10) }}
+        {% endcall %}
+
+        {% call(id, name) float_label(name='cvdelogo_padding_bottom', label='bottom', width='25%') %}
+          {{ input(id, name, get_json_conf(name), type='number', min=0, max=65535, default=10) }}
+        {% endcall %}
+      {% endcall %}
+    {% endcall %}
+  </div>
+{% endmacro %}
+
+
+{% macro audio_map_option() %}
+  {% call(id, name) form_group(name='audio_map',
+                               label='Audio Map',
+                               tooltip='Select multiple/specific audio streams by stream specifiers. '
+                                       'For example: \'a:0, a:1\' is select the first and second audio streams. '
+                                       '\'i:0x101\' is select the audio stream by MPEG-TS PID 0x101. '
+                                       '\'p:1234:a:0\' is select the first audio stream in the program 1234. '
+                                       '\'m:language:eng\' is select the english audio stream. '
+                                       '\'a\' is select all audio streams. '
+                                       'use comma \',\' to separate multiple stream specifiers.',
+                               **kwargs) %}
+    {{ input(id, name, get_json_conf(name)) }}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro audio_encoders_option() %}
+  {% for index in range(0, max((get_json_conf('audio_encoders') or [])|length, 1)) %}
+    {% call(id, name) form_group(label='Audio Encoder #%d'|format(loop.index),
+                                 class='audio_encoder_options stream_profile_option', **{'data-encoder-id': loop.index0}) %}
+      {% call() float_group() %}
+        {% call(id, name) float_label(name='audio_encoders[%d].codec'|format(index), label='codec', width='50%') %}
+          {% call(name) select(id, name, default='libfdk_aac', onchange='audio_encoder_codec_onchange.call(this);') %}
+            {{ select_option('copy', get_json_conf(name), label='Copy', tags=['Restream'], **{'data-audio_encoders[0].codec': ['copy']}) }}
+            {{ select_option('ac3', get_json_conf(name), label='AC3', tags=['native'], **{'data-audio_encoders[0].codec': ['libfdk_aac', 'aac', 'ac3', 'libmp3lame', 'mp2']}) }}
+            {{ select_option('aac', get_json_conf(name), label='AAC', tags=['native'], **{'data-audio_encoders[0].codec': ['libfdk_aac', 'aac', 'ac3', 'libmp3lame', 'mp2']}) }}
+            {{ select_option('libfdk_aac', get_json_conf(name), label='AAC', tags=['libfdk_aac'], **{'data-audio_encoders[0].codec': ['libfdk_aac', 'aac', 'ac3', 'libmp3lame', 'mp2']}) }}
+            {{ select_option('libmp3lame', get_json_conf(name), label='MP3', tags=['libmp3lame'], **{'data-audio_encoders[0].codec': ['libfdk_aac', 'aac', 'ac3', 'libmp3lame', 'mp2']}) }}
+            {{ select_option('mp2', get_json_conf(name), label='MP2', tags=['native'], **{'data-audio_encoders[0].codec': ['libfdk_aac', 'aac', 'ac3', 'libmp3lame', 'mp2']}) }}
+          {% endcall %}
+        {% endcall %}
+
+        {% call(id, name) float_label(name='audio_encoders[%d].bitrate'|format(index), label='bitrate kbps', width='20%') %}
+          {{ input(id, name, get_json_conf(name), type='number', min=0, onchange='update_output_audio_encoders.call(this);') }}
+        {% endcall %}
+        <button type="button" class="btn btn-outline-primary btn-encoder-control" onclick="audio_encoder_add.call(this, event);"><span class="fa fa-plus"></span></button>
+        <button type="button" class="btn btn-outline-danger btn-encoder-control" onclick="audio_encoder_delete.call(this, event);"><span class="fa fa-times"></span></button>
+      {% endcall %}
+    {% endcall %}
+  {% endfor %}
+  <script>
+      function audio_encoder_id_update(form_group, old_id, new_id) {
+          set_name_index(form_group, 'audio_encoders[%d].codec', old_id, new_id);
+          set_name_index(form_group, 'audio_encoders[%d].bitrate', old_id, new_id);
+
+          $('label > div', form_group).html('Audio Encoder #' + (new_id + 1));
+          form_group.attr('data-encoder-id', new_id);
+      }
+
+      function audio_encoder_delete(event) {
+          if (get_encoder_count('audio') === 1) {
+              validator_message(this, 'At least one of audio encoder settings is required');
+              return;
+          }
+
+          var form_group = $(this).closest('.form-group');
+          var deleted = parseInt(form_group.attr('data-encoder-id'));
+
+          output_encoder_delete('audio', deleted);
+          form_group.remove();
+          $('[name^="audio_encoders["][name$="].codec"]').each(function () {
+              var form_group = $(this).closest('.form-group');
+              var id = parseInt(form_group.attr('data-encoder-id'));
+              if (id > deleted)
+                  audio_encoder_id_update(form_group, id, id - 1);
+          });
+
+          $('[name="audio_encoders[0].codec"]').trigger('change');
+          validator_update();
+      }
+
+      function audio_encoder_add() {
+          var count = get_encoder_count('audio');
+          if (count > 20) {
+              validator_message(this, 'Too many audio encoders');
+              return;
+          }
+
+          var form_group = $(this).closest('.form-group');
+          var id = parseInt(form_group.attr('data-encoder-id'));
+          var clone = form_group.clone();
+
+          audio_encoder_id_update(clone, id, id + 1);
+          for (var i = count - 1; i > id; i--)
+              audio_encoder_id_update($('[name="audio_encoders[' + i + '].codec"]').closest('.form-group'), i, i + 1);
+
+          output_encoder_add('audio', id + 1);
+          clone.find('input').val('');
+          clone.find('.bootstrap-select').replaceWith(function() { return $('select', this); });
+          clone.find('.selectpicker').selectpicker('render');
+          clone.insertAfter(form_group);
+
+          $('[name="audio_encoders[' + (id + 1) + '].codec"]').trigger('change');
+      }
+
+      function audio_encoder_reload(main_codec_val, form_group) {
+          var bitrate = $('[name$=".bitrate"]', form_group);
+
+          if (main_codec_val === 'copy') {
+              bitrate.closest('.has-float-label').hide();
+              bitrate.attr('required', false);
+              $('.btn-encoder-control', form_group).hide();
+          } else {
+              bitrate.closest('.has-float-label').show();
+              bitrate.attr('required', true);
+              $('.btn-encoder-control', form_group).show();
+          }
+      }
+
+      function audio_encoder_codec_onchange() {
+          var index = get_name_index($(this));
+          var codec = $(this).val();
+          var main_codec_val = $('[name="audio_encoders[0].codec"]').val();
+
+          if (index === 0) {
+              selectpicker_options_toggle.call(this, [], ['aac']);
+              $('.audio_encoder_options').each(function (index) {
+                  var form_group = $(this).closest('.form-group.row');
+
+                  if ($('[name="audio_encoders[0].codec"]', form_group).length === 0) {
+                      if (main_codec_val !== 'copy') {
+                          form_group.slideDown();
+                      } else {
+                          form_group.slideUp();
+                      }
+                  } else {
+                      audio_encoder_reload(main_codec_val, form_group);
+                  }
+              });
+          } else {
+              selectpicker_options_toggle.call(this, ['audio_encoders[0].codec'], ['aac']);
+              audio_encoder_reload(main_codec_val, $(this).closest('.form-group'));
+          }
+
+          $('[name$="].audio_encoders[]"]').trigger('show.bs.select');
+          validator_update();
+      }
+
+      $('[name="audio_encoders[0].codec"]').trigger('change');
+  </script>
+{% endmacro %}
+
+<!-- Audio Channels -->
+{% macro audio_channels_option(prefix=None) %}
+  {% call(id, name) form_group(name=join2(prefix, 'audio_channels'),
+                               label='Audio Channels',
+                               class=join2('audio_encoder_options',
+                                           'stream_profile_option' if prefix is none else None, delimiter=' '),
+                               hide=get_json_conf('audio_encoders[0].codec') == 'copy') %}
+    {% call(name) select(id, name, default='2.0') %}
+      {{ select_option('1.0', get_json_conf(name), label='1') }}
+      {{ select_option('2.0', get_json_conf(name), label='2') }}
+      {{ select_option('6.0', get_json_conf(name), label='5.1') }}
+    {% endcall %}
+  {% endcall %}
+{% endmacro %}
+
+
+<!-- Audio Sample Rate -->
+{% macro audio_sample_rate_option(prefix=None) %}
+  {% call(id, name) form_group(name=join2(prefix, 'audio_sample_rate'),
+                               label='Audio Sample Rate',
+                               class=join2('audio_encoder_options',
+                                           'stream_profile_option' if prefix is none else None, delimiter=' '),
+                               hide=get_json_conf('audio_encoders[0].codec') == 'copy',
+                               tooltip='Use 48000 Hz sample rate is recommend. higher sample rate that may not '
+                                       'supported by the output.') %}
+    <div class="input-group">
+      {% call(name) select(id, name, default='48000') %}
+        {{ select_option('8000', get_json_conf(name)) }}
+        {{ select_option('11025', get_json_conf(name)) }}
+        {{ select_option('22050', get_json_conf(name)) }}
+        {{ select_option('44100', get_json_conf(name)) }}
+        {{ select_option('48000', get_json_conf(name)) }}
+        {{ select_option('96000', get_json_conf(name)) }}
+      {% endcall %}
+      <span class="input-group-text">Hz</span>
+    </div>
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro audio_volume_option() %}
+  {% call(id, name) form_group(name='audio_volume',
+                               label='Audio Volume',
+                               class='audio_encoder_options stream_profile_option',
+                               hide=get_json_conf('audio_encoders[0].codec') == 'copy') %}
+    {{ input(id, name, get_json_conf(name), class='form-range', type='range', min=0, max=2.0, step=0.1) }}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro subtitle_map_option() %}
+  {% call(id, name) form_group(name='subtitle_map',
+                               label='Subtitle Map',
+                               tooltip='Select multiple/specific subtitle streams by stream specifiers. '
+                                       'For example: \'s:0, s:1\' is select the first and second subtitle streams. '
+                                       '\'i:0x103\' is select the subtitle stream by MPEG-TS PID 0x103. '
+                                       '\'p:1234:s:0\' is select the first subtitle stream in the program 1234. '
+                                       '\'m:language:eng\' is select the english subtitle stream. '
+                                       '\'s\' is select all subtitle streams. '
+                                       'use comma \',\' to separate multiple stream specifiers. '
+                                       'Also, you can use the special specifier \'-cc\' to remove the closed caption.',
+                               **kwargs) %}
+    {{ input(id, name, get_json_conf(name)) }}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro subtitle_encoder_option() %}
+  {% call(id, name) form_group(name='subtitle_codec',
+                               class='stream_profile_option',
+                               label='Subtitle Encoder') %}
+    {% call(name) select(id, name, default='copy') %}
+      {{ select_option('copy', get_json_conf(name), label='Copy', tags=['Restream']) }}
+      {{ select_option('overlay_dvbsub', get_json_conf(name), label='Overlay', tags=['dvbsub']) }}
+      {{ select_option('overlay', get_json_conf(name), label='Overlay', tags=['ttml', 'webvtt'],
+                       **{'data-video_encoders[0].codec': ['mpeg2video', 'h264_qsv', 'h264_nvenc', 'libx264', 'hevc_qsv', 'hevc_nvenc', 'libx265', 'av1_nvenc']}) }}
+    {% endcall %}
+    <script>
+        $({{ selector(name) }}).on('change', function () {
+            selectpicker_options_toggle.call(this, ['video_encoders[0].codec'], ['copy']);
+            var codec = $(this).val();
+
+            $('.subtitle_encoder_option').each(function () {
+                var form_group = $(this).closest('.form-group.row');
+
+                if (codec === 'overlay') {
+                    form_group.slideDown();
+                } else {
+                    form_group.slideUp();
+                }
+            })
+        });
+    </script>
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro subtitle_font_option() %}
+  {% call(id, name) form_group(name='subtitle_font',
+                               label='Subtitle Font',
+                               class='stream_profile_option subtitle_encoder_option',
+                               hide=get_json_conf('subtitle_codec') == 'copy') %}
+    {% call(name) select(id, name, default=config.FONT_DEFAULT) %}
+      {% for font in get_fonts() %}
+        {{ select_option(font, get_json_conf(name), tags=[font.replace('-', ' ').rsplit('.', 1)[0]]) }}
+      {% endfor %}
+    {% endcall %}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro subtitle_fontsize_option() %}
+  {% call(id, name) form_group(name='subtitle_fontsize',
+                               label='Subtitle Font Size',
+                               class='stream_profile_option subtitle_encoder_option',
+                               hide=get_json_conf('subtitle_codec') == 'copy') %}
+    {{ input(id, name, get_json_conf(name), type='number', min=8, default=24) }}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro pid_map_option() %}
+  {% call(id, name) form_group(name='pid_map',
+                               label='PID Map',
+                               tooltip='This option is for assign PID to the specified stream. '
+                                       'format is \'streamid:pid\', '
+                                       '\'streamid\' is the output stream number which is start from 0, '
+                                       '\'pid\' is the PID you want to assigned, don\'t forget the 0x prefix if you '
+                                       'enter PID in hexadecimal format. '
+                                       'Also, you can use comma \',\' to separate multiple map options. '
+                                       'for example: \'0:0x100, 1:0x101, 2:0x102\'. ') %}
+    {{ input(id, name, get_json_conf(name), pattern='^(\d+:(0x|0x)?\d+(\s*,\s*)?)*$') }}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro metadata_option() %}
+  {% call(id, name) form_group(name='metadata',
+                               label='MetaData',
+                               tooltip='This option is for add metadata info for specified stream. '
+                                       'format is \'s:stream-specifier:key=value\'.'
+                                       'Also, you can use comma \',\' to separate multiple metadata options. '
+                                       'for example: \'s:a:0:languaue=eng, s:a:1:language=ita\'. ') %}
+    {{ input(id, name, get_json_conf(name), pattern='^([gscp]:([^:,]+:)+([^=]+)=([^,]+)(,\s*)?)*$') }}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro service_id_option() %}
+  {% call(id, name) form_group(name='service_id',
+                               label='Service ID',
+                               tooltip='Set the MPEG-TS service ID.') %}
+    {{ input(id, name, get_json_conf(name)) }}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro service_name_option() %}
+  {% call(id, name) form_group(name='service_name',
+                               label='Service Name',
+                               tooltip='Set the MPEG-TS service name. it will use the service name of '
+                                       'source stream or stream label if this option is not set. '
+                                       'Note: this option works only for the FILE, HTTP, UDP and TCP output.') %}
+    {{ input(id, name, get_json_conf(name)) }}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro service_provider_option() %}
+  {% call(id, name) form_group(name='service_provider',
+                               label='Service Provider',
+                               tooltip='Set the MPEG-TS service provider. it will use the service provider of '
+                                       'source stream if this option is not set. '
+                                       'Note: this option works only for the FILE, HTTP, UDP and TCP output.',
+                               **kwargs) %}
+    {{ input(id, name, get_json_conf(name)) }}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro color_range_option() %}
+  {% call(id, name) form_group(name='color_range', label='Color Range') %}
+    {% call(name) select(id, name, default='', title='\u00a0') %}
+      {{ select_option('', get_json_conf(name), label='\u00a0') }}
+      {{ select_option('tv', get_json_conf(name), label='TV') }}
+      {{ select_option('pc', get_json_conf(name), label='PC') }}
+    {% endcall %}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro colorspace_option() %}
+  {% call(id, name) form_group(label='Color Space') %}
+    {% call() float_group() %}
+      {% call(id, name) float_label('colorspace', label='colorspace', width='33%') %}
+        {% call(name) select(id, name, default='', title='\u00a0') %}
+          {{ select_option('', get_json_conf(name), label='\u00a0') }}
+          {{ select_option('bt709', get_json_conf(name), label='BT.709') }}
+          {{ select_option('bt470bg', get_json_conf(name), label='BT.470 BG') }}
+          {{ select_option('bt2020nc', get_json_conf(name), label='BT.2020 NCL') }}
+          {{ select_option('bt2020c', get_json_conf(name), label='BT.2020 CL') }}
+          {{ select_option('smpte170m', get_json_conf(name), label='SMPTE 170 M') }}
+          {{ select_option('smpte240m', get_json_conf(name), label='SMPTE 240 M') }}
+          {{ select_option('smpte2085', get_json_conf(name), label='SMPTE 2085') }}
+          {{ select_option('rgb', get_json_conf(name), label='RGB') }}
+          {{ select_option('fcc', get_json_conf(name), label='FCC') }}
+          {{ select_option('ycgco', get_json_conf(name), label='YCGCO') }}
+        {% endcall %}
+      {% endcall %}
+
+      {% call(id, name) float_label('color_primaries', label='color primaries', width='33%') %}
+        {% call(name) select(id, name, default='', title='\u00a0') %}
+          {{ select_option('', get_json_conf(name), label='\u00a0') }}
+          {{ select_option('bt709', get_json_conf(name), label='BT.709') }}
+          {{ select_option('bt470m', get_json_conf(name), label='BT.470 M') }}
+          {{ select_option('bt470bg', get_json_conf(name), label='BT.470 BG') }}
+          {{ select_option('bt2020', get_json_conf(name), label='BT.2020') }}
+          {{ select_option('smpte170m', get_json_conf(name), label='SMPTE 170 M') }}
+          {{ select_option('smpte240m', get_json_conf(name), label='SMPTE 240 M') }}
+          {{ select_option('smpte428', get_json_conf(name), label='SMPTE 428-1') }}
+          {{ select_option('smpte431', get_json_conf(name), label='SMPTE 431-2') }}
+          {{ select_option('smpte432', get_json_conf(name), label='SMPTE 422-1') }}
+          {{ select_option('film', get_json_conf(name), label='Film') }}
+          {{ select_option('jedec-p22', get_json_conf(name), label='JEDEC P22') }}
+        {% endcall %}
+      {% endcall %}
+
+      {% call(id, name) float_label('color_trc', label='color trc', width='34%') %}
+        {% call(name) select(id, name, default='', title='\u00a0') %}
+          {{ select_option('', get_json_conf(name), label='\u00a0') }}
+          {{ select_option('bt709', get_json_conf(name), label='BT.709') }}
+          {{ select_option('gamma22', get_json_conf(name), label='BT.470 M') }}
+          {{ select_option('gamma28', get_json_conf(name), label='BT.470 BG') }}
+          {{ select_option('bt1361e', get_json_conf(name), label='BT.1361') }}
+          {{ select_option('bt2020-10', get_json_conf(name), label='BT.2020 - 10 bit') }}
+          {{ select_option('bt2020-12', get_json_conf(name), label='BT.2020 - 12 bit') }}
+          {{ select_option('smpte170m', get_json_conf(name), label='SMPTE 170 M') }}
+          {{ select_option('smpte240m', get_json_conf(name), label='SMPTE 240 M') }}
+          {{ select_option('smpte2084', get_json_conf(name), label='SMPTE 2084') }}
+          {{ select_option('smpte428', get_json_conf(name), label='SMPTE 428-1') }}
+          {{ select_option('linear', get_json_conf(name), label='Linear') }}
+          {{ select_option('log100', get_json_conf(name), label='Log') }}
+          {{ select_option('log316', get_json_conf(name), label='Log square root') }}
+          {{ select_option('iec61966-2-1', get_json_conf(name), label='IEC 61966-2-1') }}
+          {{ select_option('iec61966-2-4', get_json_conf(name), label='IEC 61966-2-4') }}
+          {{ select_option('arib-std-b67', get_json_conf(name), label='ARIB STD-B67') }}
+        {% endcall %}
+      {% endcall %}
+    {% endcall %}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro memory_limit_option() %}
+  {% call(id, name) form_group(label='Memory Limit',
+                               tooltip='Set up the max allowed resource usage for the background stream process. '
+                                       'And the stream will be force restarted if the usage is exceed '
+                                       'the max allowed value (in MiB). It will calculated the max allowed '
+                                       'memory usage automatically if you leave the value empty.',
+                               **kwargs) %}
+    {% call() float_group() %}
+      {% call(id, name) float_label('sys_mem_max', label='max system memory', width='50%') %}
+        {{ input(id, name, get_json_conf(name), type='number') }}
+      {% endcall %}
+
+      {% call(id, name) float_label('gpu_mem_max', label='max graphics memory', width='50%') %}
+        {{ input(id, name, get_json_conf(name), type='number') }}
+      {% endcall %}
+    {% endcall %}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro speed_limit_option() %}
+  {% call(id, name) form_group(label='Speed Limit',
+                               tooltip='Set up the min and max allowed stream speed, and restart the '
+                                       'stream if speed too fast or slow.',
+                               **kwargs) %}
+    {% call() float_group() %}
+      {% call(id, name) float_label('speed_min', label='min speed', width='50%') %}
+        {{ input(id, name, get_json_conf(name), type='number', max=1, step='0.001') }}
+      {% endcall %}
+
+      {% call(id, name) float_label('speed_max', label='max speed', width='50%') %}
+        {{ input(id, name, get_json_conf(name), type='number', min=1, step='0.001') }}
+      {% endcall %}
+    {% endcall %}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro fps_limit_option() %}
+  {% call(id, name) form_group(name='fps_limit', label='FPS Limit', **kwargs) %}
+    {% call() float_group() %}
+      {% call(id, name) float_label('fps_min', label='min fps', width='50%') %}
+        {{ input(id, name, get_json_conf(name), type='number', min=0) }}
+      {% endcall %}
+
+      {% call(id, name) float_label('fps_max', label='max fps', width='50%') %}
+        {{ input(id, name, get_json_conf(name), type='number', min=0) }}
+      {% endcall %}
+    {% endcall %}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro offline_video_option() %}
+  {% call(id, name) form_group(name='offline_video', label='Offline Video') %}
+    <div class="input-group">
+      {% call(name) select(id, name, title='\u00a0') %}
+        {{ select_option('', get_json_conf(name), label='\u00a0') }}
+        {% for filename in get_files(extensions=video_extensions + image_extensions) %}
+          {{ select_option(filename, get_json_conf(name), label=filename) }}
+        {% endfor %}
+      {% endcall %}
+
+      <button class="btn btn-primary" type="button" data-toggle="modal" data-target="#offline-video-upload-modal">
+        <i class="fa fa-cloud-upload-alt"></i>
+      </button>
+
+      {{ file_upload_modal('offline-video-upload-modal', url_for('file.upload'), extensions=video_extensions + image_extensions, target='#' + id) }}
+    </div>
+  {% endcall %}
+{% endmacro %}

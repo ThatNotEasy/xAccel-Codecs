@@ -1,0 +1,354 @@
+{% extends "layout.html" %}
+{% from "bootstrap.html" import colorful_label, table with context %}
+
+{% block title %}Manage Adapters{% endblock %}
+
+{% block content %}
+  {% macro progress_bar(id, now, min=0, max=100) %}
+    <!--suppress ALL -->
+    <div class="progress" style="height: 5px; margin-bottom: 0;">
+      <div class="progress-bar progress-striped active" id="{{ id }}"
+           role="progressbar"
+           aria-valuenow="{{ now }}"
+           aria-valuemin="{{ min }}"
+           aria-valuemax="{{ max }}"
+           style="width: {{ '%d%%'|format(now) }};">
+      </div>
+    </div>
+  {% endmacro %}
+
+
+  {% call table(columns=['ID', 'Name', 'Server', 'Device', 'Frequency', 'Symbol Rate', 'Signal Strength', 'SNR', 'Settings']) %}
+    {% for adapter in adapters %}
+      <tr class="adapter-details" id="adapter-{{ adapter.id }}-row" data-adapter-id="{{ adapter.id }}">
+
+        <td id="adapter-{{ adapter.id }}-id">{{ adapter.id }}</td>
+        <td><div class="badge bg-primary adapter-name">{{ adapter.name }}</div></td>
+        <td class="adapter-server">{{ colorful_label(adapter.server_name) }}</td>
+        <td class="adapter-device">{{ colorful_label(adapter.device_id) }}</td>
+        <td class="adapter-frequency">{{ format_float(adapter.frequency) }}</td>
+        <td class="adapter-symbol-rate">{{ format_float(adapter.symbol_rate) }}</td>
+        <td class="col-md-2">{{ progress_bar('adapter-%d-signal-strength'|format(adapter.id), adapter.signal_strength) }}</td>
+        <td class="col-md-2">{{ progress_bar('adapter-%d-snr'|format(adapter.id), adapter.snr) }}</td>
+        <td>
+          <input type="hidden" id="adapter-{{ adapter.id }}-status" value="{{ adapter.status }}">
+          {% set title = 'start' %}
+          {% set class = 'fa fa-play text-success' %}
+
+          {% if adapter.status in ['starting', 'running', 'restarting'] %}
+            {% set title = 'stop' %}
+            {% set class = 'fa fa-stop text-danger' %}
+          {% endif %}
+
+          <button type="button" class="btn btn-link adapter-control">
+            <i class="{{ class }}" id="adapter-{{ adapter.id }}-control-inner" title="{{ title }}"></i>
+          </button>
+
+          <button type="button" class="btn btn-link adapter-details">
+            <i class="fa fa-chevron-circle-right" title="Details"></i>
+          </button>
+
+          <a href="{{ url_for('adapter.settings', adapter=adapter) }}" class="btn btn-link">
+            <i class="fa fa-cog" title="settings"></i>
+          </a>
+
+          <a href="{{ url_for('adapter.log', adapter=adapter) }}" class="btn btn-link">
+            <i class="fa fa-file" title="log"></i>
+          </a>
+
+          <form action="{{ url_for('adapter.delete', adapter=adapter) }}" method="post">
+            <button type="submit" class="btn btn-link"
+                    data-toggle="confirmation"
+                    data-message="Please confirm to delete the adapter {{ adapter.id }} {{ adapter.name}}?">
+              <i class="fa fa-times text-danger" title="delete"></i>
+            </button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+  {% endcall %}
+
+  <script>
+      function adapter_services_update(child, adapter_id, services) {
+          var tbody = $('tbody', child);
+          var sids = [];
+
+          for (var index = 0; index < services.length; index++) {
+              var service = services[index];
+              var tr = $(v.sprintf('#adapter-%d-service-%d', adapter_id, service.sid));
+              var bitrate = v.sprintf('%.1fkbits/s', service.bitrate);
+              var status = v.sprintf('<div class="badge %s text-capitalize">%s</div>',
+                                      (service.status == 'probing' ? 'bg-azure-lt' :
+                                      (service.status == 'scrambled' ? 'bg-red-lt' :
+                                      (service.status == 'active' ? 'bg-green-lt' : 'bg-gray-lt'))),
+                                      service.status);
+
+              sids.push(service.sid);
+              if (tr.length > 0) {
+                  tr.find('.adapter-service-status').html(status);
+                  tr.find('.adapter-service-bitrate').html(bitrate);
+                  tr.find('.adapter-service-ccerr').html(service.ccerr);
+                  tr.find('.adapter-service-tserr').html(service.tserr);
+              } else {
+                  var pids = [];
+                  service.pids.forEach(function (pid) {
+                     pids.push(v.sprintf('<span data-pid="%d">%d</span>', pid, pid));
+                  });
+
+                  $(v.sprintf(
+                      '<tr class="adapter-%d-service" id="adapter-%d-service-%d">' +
+                      '  <td class="adapter-service-sid">%d</td>' +
+                      '  <td class="adapter-service-name">%s</td>' +
+                      '  <td class="adapter-service-pids">%s</td>' +
+                      '  <td class="adapter-service-ca">%s</td>' +
+                      '  <td class="adapter-service-bitrate">%s</td>' +
+                      '  <td class="adapter-service-ccerr">%d</td>' +
+                      '  <td class="adapter-service-tserr">%d</td>' +
+                      '  <td class="adapter-service-status">%s</td>' +
+                      '</tr>',
+                      adapter_id, adapter_id, service.sid,
+                      service.sid, service.name, pids.join(' '),
+                      $.map(service.ca, function (x) {return v.sprintf('%04x', x)}).join(' '),
+                      bitrate, service.ccerr, service.tserr, status
+                  )).appendTo(tbody);
+              }
+
+              service['streaminfo'].forEach(function (avstream) {
+                  var span = tr.find(v.sprintf('.adapter-service-pids > span[data-pid="%d"]', avstream['pid']));
+                  if (span.length > 0 && span.data('toggle') !== 'tooltip') {
+                      var text = [];
+
+                      text.push('PID            : ' + avstream['pid']);
+                      text.push('Type           : ' + avstream['type']);
+                      text.push('Codec          : ' + avstream['codec']);
+                      if (avstream['lang'])
+                          text.push('Language       : ' + avstream['lang']);
+                      if (avstream['profile'])
+                          text.push('Profile        : ' + avstream['profile']);
+                      if (avstream['pix_fmt'])
+                          text.push('Pixel Format   : ' + avstream['pix_fmt']);
+                      if (avstream['size'])
+                          text.push('Size           : ' + avstream['size']);
+                      if (avstream['fps'])
+                          text.push('FPS            : ' + avstream['fps']);
+                      if (avstream['sample_rate'])
+                          text.push('Sample Rate    : ' + avstream['sample_rate']);
+                      if (avstream['channels'])
+                          text.push('Channels       : ' + avstream['channels']);
+                      if (avstream['channel_layout'])
+                          text.push('Channel Layout : ' + avstream['channel_layout']);
+                      if (avstream['sample_fmt'])
+                          text.push('Sample Format  : ' + avstream['sample_fmt']);
+
+                      var html = text.join('<br/>').replace(/ /g, '&nbsp;');
+                      var title = v.sprintf('<div style="text-align: left; font-family: monospace;">%s</div>', html);
+
+                      span.attr('data-toggle', 'tooltip');
+                      span.attr('title', title);
+                  }
+              });
+          }
+
+          $(v.sprintf('.adapter-%d-service', adapter_id)).each(function () {
+              var sid = parseInt($(this).find('.adapter-service-sid').html());
+              if (!sids.includes(sid)) {
+                  $(this).remove();
+              }
+          });
+
+          $('table', child).DataTable({
+              retrieve: true,
+              paging: false,
+              searching: true,
+              info: false,
+              autoWidth: false,
+          });
+      }
+
+      function service_description_table(adapter_id) {
+          return '<div class="card">' +
+                 '  <div class="card-header">' +
+                 '    <strong class="col-md-4">Service Description Table</strong>' +
+                 '    <div class="col-md-6" style="display: flex">' +
+                 '      <div id="adapter-' + adapter_id + '-fe-status">' +
+                 '        <span>SIGNAL</span>' +
+                 '        <span>CARRIER</span>' +
+                 '        <span>VITERBI</span>' +
+                 '        <span>SYNC</span>' +
+                 '        <span>LOCK</span>' +
+                 '      </div>' +
+                 '      <div>' +
+                 '        <span id="adapter-' + adapter_id + '-ber"></span>' +
+                 '        <span id="adapter-' + adapter_id + '-bitrate"></span>' +
+                 '      </div>' +
+                 '    </div>' +
+                 '    <div class="col-md-2 text-right">' +
+                 '      <form action="/adapter/' + adapter_id + '/create-streams" method="post">' +
+                 '        <button type="submit" class="btn btn-primary">Create Streams</button>' +
+                 '      </form>' +
+                 '    </div>' +
+                 '  </div>' +
+                 '  <div class="table-responsive-sm">' +
+                 '    <table class="table table-vcenter card-table datatable">' +
+                 '      <thead>' +
+                 '        <tr>' +
+                 '          <th>SID</th>' +
+                 '          <th>Name</th>' +
+                 '          <th>PIDS</th>' +
+                 '          <th>CA</th>' +
+                 '          <th>Bitrate</th>' +
+                 '          <th>CC Errors</th>' +
+                 '          <th>Transport Errors</th>' +
+                 '          <th>Status</th>' +
+                 '        </tr>' +
+                 '      </thead>' +
+                 '      <tbody>' +
+                 '      </tbody>' +
+                 '    </table>' +
+                 '  </div>' +
+                 '</div>';
+      }
+
+      function adapter_update(adapter) {
+          var id = adapter.id;
+          var tr = document.getElementById('adapter-' + id + '-row');
+          if (!tr)
+              return;
+
+          var signal_strength = document.getElementById(v.sprintf('adapter-%d-signal-strength', adapter.id));
+          var snr = document.getElementById(v.sprintf('adapter-%d-snr', adapter.id));
+          var status = document.getElementById(v.sprintf('adapter-%d-status', adapter.id));
+          var control_inner = document.getElementById(v.sprintf('adapter-%d-control-inner', adapter.id));
+          var ber = document.getElementById(v.sprintf('adapter-%d-ber', adapter.id));
+          var bitrate = document.getElementById(v.sprintf('adapter-%d-bitrate', adapter.id));
+
+          element_update(tr.getElementsByClassName('adapter-name')[0], adapter.name);
+          element_update(tr.getElementsByClassName('adapter-device')[0], colorful_label(adapter.device_id));
+          element_update(tr.getElementsByClassName('adapter-server')[0], colorful_label(adapter.server_name));
+          element_update(tr.getElementsByClassName('adapter-frequency')[0], adapter.frequency);
+          if (adapter.symbol_rate !== undefined)
+            element_update(tr.getElementsByClassName('adapter-symbol-rate')[0], adapter.symbol_rate);
+
+          signal_strength.style.width = v.sprintf('%d%%', adapter.signal_strength);
+          snr.style.width = v.sprintf('%d%%', adapter.snr);
+
+          status.value = adapter.status;
+          if (control_inner) {
+              if (adapter.status === 'starting' ||
+                  adapter.status === 'running' ||
+                  adapter.status === 'restarting') {
+                  control_inner.title = 'stop';
+                  control_inner.className = 'fa fa-stop text-danger';
+              } else {
+                  control_inner.title = 'start';
+                  control_inner.className = 'fa fa-play text-success';
+              }
+          }
+
+          $(v.sprintf('#adapter-%d-fe-status span', adapter.id)).each(function () {
+              if (adapter.fe_status.includes('HAS_' + $(this).html())) {
+                  $(this).css('color', 'green');
+              } else {
+                  $(this).css('color', 'red');
+              }
+          });
+
+          if (ber) {
+              ber.innerHTML = v.sprintf('BER: %d', adapter.ber);
+              ber.style.color = adapter.ber === 0 && adapter.bitrate > 0 ? 'green' : 'red';
+          }
+
+          if (bitrate) {
+              bitrate.innerHTML = v.sprintf('%.1fkbits/s', adapter.bitrate);
+              bitrate.style.color = adapter.bitrate > 0 ? 'green' : 'red';
+          }
+      }
+
+      $('.adapter-control').on('click', function () {
+          var adapter_id = $(this).closest('tr').data('adapter-id');
+          var status = $(v.sprintf('#adapter-%d-status', adapter_id)).val();
+          var url = v.sprintf('/adapter/%d/start', adapter_id);
+
+          if (status === 'starting' || status === 'running' || status === 'restarting')
+              url = v.sprintf('/adapter/%d/stop', adapter_id);
+
+          $.ajax({
+              url: url,
+              type: 'POST',
+              dataType: 'json',
+              success: function (result) {
+                  if ('error' in result) {
+                      flash_message(result['error']);
+                  }
+              }
+          });
+      });
+
+      $('.adapter-details').on('click', function () {
+          var adapter_id = $(this).closest('tr').data('adapter-id');
+          var tr = $(v.sprintf('#adapter-%d-row', adapter_id));
+          var row = table.row(tr);
+          var child_id = v.sprintf('adapter-%d-child', adapter_id);
+
+          if (row.child.isShown()) {
+              $('#' + child_id, row.child()).slideUp(function () {
+                  row.child.hide();
+                  tr.removeClass('shown');
+                  tr.trigger('hide');
+              });
+              $('.fa-chevron-circle-down', tr).attr('class', 'fa fa-chevron-circle-right');
+          } else {
+              $('.fa-chevron-circle-right', tr).attr('class', 'fa fa-chevron-circle-down');
+              if (row.child() && row.child().length > 0) {
+                  row.child.show();
+              } else {
+                  var interval = setInterval(function adapter_details_render() {
+                      $.ajax({
+                          url: v.sprintf('/adapter/%d/services', adapter_id),
+                          success: function (services) {
+                              var child = $('#' + child_id, row.child());
+                              var show = false;
+
+                              if (child.length === 0) {
+                                  row.child('<div id="' + child_id + '" style="display: none;">' +
+                                               service_description_table(adapter_id) +
+                                            '</div>', 'child-row');
+                                  child = $('#' + child_id, row.child());
+                                  show = true;
+                              }
+
+                              if (!window.getSelection().baseNode ||
+                                  !window.getSelection().baseNode.parentNode.closest('#' + child_id)) {
+                                  adapter_services_update(child, adapter_id, services);
+                              }
+
+                              if (show) {
+                                  row.child.show();
+                                  child.slideDown();
+                                  tr.addClass('shown');
+                              }
+                          }
+                      });
+
+                      return adapter_details_render;
+                  }(), 1000);
+
+                  tr.on('hide', function () {
+                      clearInterval(interval);
+                      row.child.remove()
+                  });
+
+              }
+          }
+      });
+
+      setInterval(function () {
+          $.ajax({
+              url: '/adapter/stats',
+              success: function (result) {
+                  result.forEach(adapter_update);
+              }
+          });
+      }, 500);
+  </script>
+{% endblock %}

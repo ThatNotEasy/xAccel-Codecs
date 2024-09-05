@@ -1,0 +1,57 @@
+{% extends "layout.html" %}
+
+{% block title %}Upgrade{% endblock %}
+
+{% block script %}
+  <script src="/static/js/video.min.js"></script>
+  <script src="/static/js/videojs-contrib-hls.min.js"></script>
+  <script src="/static/js/socket.io.js"></script>
+{% endblock %}
+
+{% block content %}
+  <div class="container" id="upload-container">
+    <form class="form-horizontal" enctype="multipart/form-data" action="/upgrade/offline" method="post">
+      <input id="upgrade-file" name="upgrade-file" type="file">
+    </form>
+    <p></p>
+
+    <textarea class="form-control" id="upgrade-message" style="font-family: monospace; width: 100%; height: 100%" readonly></textarea>
+  </div>
+
+  <script>
+      $('#upgrade-file').fileinput({
+          showPreview: false,
+          uploadLabel: 'Upgrade',
+          uploadTitle: 'Upgrade',
+          msgPlaceholder: 'Select upgrade package ...',
+          slugCallback: function (filename) {
+              return filename;
+          }
+      });
+
+      {% if upgrading %}
+          setInterval(function () {
+              $.ajax({
+                  url: '/api/upgrade/log',
+                  success: function (result) {
+                      var upgrade_message = $('#upgrade-message');
+                      upgrade_message.val(result);
+                      upgrade_message.scrollTop(upgrade_message.prop('scrollHeight'));
+                  }
+              });
+          }, 250);
+      {% endif %}
+
+      $(window).on('resize', function () {
+          var upload_container = $('#upload-container');
+          var reserved_height = $('#topnavbar').height() + 20 + $('form').height() + 10;
+          var flash_container = $('#flash-container');
+
+          if (typeof(flash_container.height()) !== 'undefined' ) {
+              reserved_height += flash_container.height();
+          }
+
+          upload_container.height($(window).height() - reserved_height);
+      }).trigger('resize');
+  </script>
+{% endblock %}

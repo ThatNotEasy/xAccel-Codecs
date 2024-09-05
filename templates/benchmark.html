@@ -1,0 +1,137 @@
+{% extends "layout.html" %}
+{% from "bootstrap.html" import form, panel, table, colorful_label, form_group, select, select_option, progress_modal with context %}
+
+{% block title %}{{ title }}{% endblock %}
+
+
+{% block content %}
+  {% set columns = ['ID', 'Server', 'Type', 'Device', 'Codec', 'Input', 'Output', 'Max Streams', 'System Memory Usage', 'GPU Memory Usage', 'Time'] %}
+  {% set columnDefs = [
+      {'type': 'videosize', 'targets': [5, 6]},
+  ] %}
+
+  <div class="card">
+    <div class="card-header">
+      <h6 class="col-md-6 card-title">Benchmark</h6>
+      <div class="col-md-6 text-right">
+        <button class="btn btn-primary" type="button" data-toggle="modal" data-target="#benchmark-modal">
+          Benchmark Now
+        </button>
+      </div>
+    </div>
+    {% call table(columns=columns, columnDefs=columnDefs, search=False, card=False, disabled=[8, 9]) %}
+      {% for benchmark in all_benchmarks %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td>{{ colorful_label(benchmark['server_name']) }}</td>
+          <td>{{ colorful_label(benchmark['type']) }}</td>
+          <td>{{ colorful_label(benchmark['device']) }}</td>
+          <td>{{ colorful_label('H.264' if benchmark['codec'] == 'h264' else 'HEVC') }}</td>
+          <td>{{ colorful_label(benchmark['input']) }}</td>
+          <td>{{ colorful_label(benchmark['output']) }}</td>
+          <td>{{ benchmark['max_streams'] }}</td>
+          <td>{{ '%-4s'|format(benchmark['sys_mem_usage']|string) }}MiB</td>
+          <td>{% if 'gpu_mem_usage' in benchmark %}{{ benchmark['gpu_mem_usage'] }}MiB{% else %}-{% endif %}</td>
+          <td>{{ benchmark['time']}}s</td>
+        </tr>
+      {% endfor %}
+    {% endcall %}
+  </div>
+
+  <div class="modal modal-blur fade" id="benchmark-modal" tabindex="-1" role="dialog" aria-modal="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Benchmark Settings</h5>
+          <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+            <i class="fa fa-times"></i>
+          </button>
+        </div>
+
+        <div class="modal-body">
+          {% call form(url_for('tool.benchmark_start'), submit_label='Run', layout=(2, 3, 5, 2)) %}
+            {% call(id, name) form_group(name='servers[]', label='Server', layout=(2, 3, 5, 2)) %}
+              {% call(name) select(id, name, 'required', 'multiple', default=1, title='\u00a0', **{'data-multiple-separator': ' '}) %}
+                {% for server in get_servers() %}
+                  {{ select_option(server.id, get_json_conf(name), tags=[server.name]) }}
+                {% endfor %}
+              {% endcall %}
+            {% endcall %}
+
+            {% call(id, name) form_group(name='types[]', label='Types', layout=(2, 3, 5, 2)) %}
+              {% call(name) select(id, name, 'required', 'multiple', title='\u00a0', **{'data-multiple-separator': ' '}) %}
+                {{ select_option('CPU', get_json_conf(name), 'selected', tags=['CPU']) }}
+                {{ select_option('QuickSync', get_json_conf(name), 'selected', tags=['QuickSync']) }}
+                {{ select_option('NVENC', get_json_conf(name), 'selected', tags=['NVENC']) }}
+              {% endcall %}
+            {% endcall %}
+
+            {% call(id, name) form_group(name='codecs[]', label='Codecs', layout=(2, 3, 5, 2)) %}
+              {% call(name) select(id, name, 'required', 'multiple', title='\u00a0', **{'data-multiple-separator': ' '}) %}
+                {{ select_option('h264', get_json_conf(name), 'selected', tags=['H.264']) }}
+                {{ select_option('hevc', get_json_conf(name), 'selected', tags=['HEVC']) }}
+                {{ select_option('av1', get_json_conf(name), tags=['AV1']) }}
+              {% endcall %}
+            {% endcall %}
+
+            {% call(id, name) form_group(name='input_sizes[]', label='Input Size', layout=(2, 3, 5, 2)) %}
+              {% call(name) select(id, name, 'required', 'multiple', title='\u00a0', **{'data-multiple-separator': ' '}) %}
+                {{ select_option('720x576', get_json_conf(name), tags=['720x576']) }}
+                {{ select_option('852x480', get_json_conf(name), 'selected', tags=['852x480']) }}
+                {{ select_option('1024x576', get_json_conf(name), 'selected', tags=['1024x576']) }}
+                {{ select_option('1280x720', get_json_conf(name), 'selected', tags=['1280x720']) }}
+                {{ select_option('1920x1080', get_json_conf(name), 'selected', tags=['1920x1080']) }}
+                {{ select_option('2560x1440', get_json_conf(name), tags=['2560x1440']) }}
+                {{ select_option('3840x2160', get_json_conf(name), tags=['3840x2160']) }}
+              {% endcall %}
+            {% endcall %}
+
+            {% call(id, name) form_group(name='output_sizes[]', label='Output Size', layout=(2, 3, 5, 2)) %}
+              {% call(name) select(id, name, 'required', 'multiple', title='\u00a0', **{'data-multiple-separator': ' '}) %}
+                {{ select_option('720x576', get_json_conf(name), tags=['720x576']) }}
+                {{ select_option('852x480', get_json_conf(name), 'selected', tags=['852x480']) }}
+                {{ select_option('1024x576', get_json_conf(name), 'selected', tags=['1024x576']) }}
+                {{ select_option('1280x720', get_json_conf(name), 'selected', tags=['1280x720']) }}
+                {{ select_option('1920x1080', get_json_conf(name), 'selected', tags=['1920x1080']) }}
+                {{ select_option('2560x1440', get_json_conf(name), tags=['2560x1440']) }}
+                {{ select_option('3840x2160', get_json_conf(name), tags=['3840x2160']) }}
+              {% endcall %}
+            {% endcall %}
+
+            {% call(id, name) form_group(name='input_fps', label='Input FPS', layout=(2, 3, 5, 2)) %}
+              <div class="input-group">
+                {% call(name) select(id, name, 'required', default=25) %}
+                  {{ select_option(25, get_json_conf(name)) }}
+                  {{ select_option(30, get_json_conf(name)) }}
+                  {{ select_option(50, get_json_conf(name)) }}
+                  {{ select_option(60, get_json_conf(name)) }}
+                {% endcall %}
+                <span class="input-group-text">fps</span>
+              </div>
+            {% endcall %}
+
+            {% call(id, name) form_group(name='output_fps', label='Output FPS', layout=(2, 3, 5, 2)) %}
+              <div class="input-group">
+                {% call(name) select(id, name, 'required', default=25) %}
+                  {{ select_option(25, get_json_conf(name)) }}
+                  {{ select_option(30, get_json_conf(name)) }}
+                  {{ select_option(50, get_json_conf(name)) }}
+                  {{ select_option(60, get_json_conf(name)) }}
+                {% endcall %}
+                <span class="input-group-text">fps</span>
+              </div>
+            {% endcall %}
+          {% endcall %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {{ progress_modal(url_for('tool.benchmark_progress'), cancel_url=url_for('tool.benchmark_stop')) }}
+
+  <script>
+      $('form').on('submit', function (e) {
+          progress_modal_update();
+      });
+  </script>
+{% endblock %}

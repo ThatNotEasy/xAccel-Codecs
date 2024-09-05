@@ -1,0 +1,53 @@
+{% extends "layout.html" %}
+{% from "bootstrap.html" import panel, form, form_group, input, float_group, float_label, select, select_option with context %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+  {% call panel(title=title) %}
+    {% call form(request.path, '/proxy/manage') %}
+      {% call(id, name) form_group(name='name', label='Name') %}
+        {{ input(id, name, get_json_conf(name), 'required') }}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='type', label='Type') %}
+        {% call(name) select(id, name, default='http') %}
+          {{ select_option('http', get_json_conf(name), tags=['HTTP']) }}
+          {{ select_option('http+ssl', get_json_conf(name), tags=['HTTPS']) }}
+          {{ select_option('socks5', get_json_conf(name), tags=['Socks5']) }}
+          {{ select_option('socks5+ssl', get_json_conf(name), tags=['Socks5 Over TLS']) }}
+          {{ select_option('ssh', get_json_conf(name), tags=['SSH Tunnel']) }}
+        {% endcall %}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='host', label='Host') %}
+        {{ input(id, name, get_json_conf(name), 'required') }}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='port', label='Port') %}
+        {{ input(id, name, get_json_conf(name), 'required', type='number', min=0, max=65535) }}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='username', label='Username') %}
+        {{ input(id, name, get_json_conf(name)) }}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='password', label='Password') %}
+        {{ input(id, name, get_json_conf(name)) }}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='streams[]', label='Streams') %}
+        {% call(name) select(id, name, 'multiple', title='\u00a0',
+                             **{'data-size': 15,
+                                'data-live-search': true,
+                                'data-live-search-placeholder': 'Search',
+                                'data-actions-box': true,
+                                'data-multiple-separator': ' '}) %}
+          {% for stream in streams %}
+            {{ select_option(stream.id, get_json_conf(name), tags=[stream.config.name]) }}
+          {% endfor %}
+        {% endcall %}
+      {% endcall %}
+    {% endcall %}
+  {% endcall %}
+{% endblock %}

@@ -1,0 +1,46 @@
+{% extends "layout.html" %}
+{% from "bootstrap.html" import panel, form_group, input, divider with context %}
+
+{% block title %}{{ title }}{% endblock %}
+
+
+{% block content %}
+  {% call panel(title=title) %}
+    <form class="form-horizontal" data-toggle="validator" action="{{ request.path }}" method="post">
+      {% set keylen = get_json_conf('key', default='')|length %}
+
+      {% call(id, name) form_group(name='key', label='License Key') %}
+        <div class="input-group">
+          {{ input(id, name, get_json_conf(name, default=''), 'required', type='text',
+                   placeholder='Please enter the license key') }}
+
+          {% if keylen == 0 %}
+            <button type="submit" class="btn btn-primary" name="action" value="activate">Activate</button>
+          {% elif 64 >= keylen > 0 %}
+            <button type="submit" class="btn btn-danger" name="action" value="reissue">Reissue</button>
+          {% endif %}
+        </div>
+      {% endcall %}
+
+      {% call(id, name) form_group(name='username', label='Username') %}
+        {{ input(id, name, get_json_conf(name), 'readonly') }}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='email', label='Email') %}
+        {{ input(id, name, get_json_conf(name), 'readonly') }}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='status', label='Status') %}
+        {{ input(id, name, get_json_conf(name), 'readonly') }}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='activated_date', label='Activated Date') %}
+        {{ input(id, name, get_json_conf(name), 'readonly') }}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='expire_date', label='Expire Date') %}
+        {{ input(id, name, get_json_conf(name), 'readonly') }}
+      {% endcall %}
+    </form>
+  {% endcall %}
+{% endblock %}

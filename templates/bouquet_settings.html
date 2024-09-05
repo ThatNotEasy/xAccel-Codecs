@@ -1,0 +1,92 @@
+{% extends "layout.html" %}
+{% from "bootstrap.html" import panel, form, form_group, input, colorful_label, sortable with context %}
+
+{% block title %}{{ title }}{% endblock %}
+
+
+{% macro bouquet_item(input_name, data, id, checked=False) %}
+  <div class="list-group-item" data-id="{{ id }}" style="border-left: 0; border-right: 0">
+    <div class="row">
+      <div class="col-7">
+        <div class="badge bg-primary" style="white-space: normal; word-break: break-all">{{ data[id]['name'] }}</div>
+      </div>
+      <div class="col-3">
+        {% if input_name.startswith('stream') %}
+          {{ colorful_label(data[id]['status']|upper) }}
+        {% endif %}
+      </div>
+      <div class="col-2">
+        <input type="checkbox" name="{{ input_name }}" value="{{ id }}" class="form-check float-right mr-3" {% if checked %} checked {% endif %}>
+      </div>
+    </div>
+  </div>
+{% endmacro %}
+
+
+{% macro bouquet_sortable(input_name, data, data_selected) %}
+  {% call sortable() %}
+    <input type="hidden" name="{{ input_name }}">
+    {% for id in data_selected %}
+      {% if id in data %}
+        {{ bouquet_item(input_name, data, id, checked=True) }}
+      {% endif %}
+    {% endfor %}
+
+    {% for id in data %}
+      {% if id not in data_selected %}
+        {{ bouquet_item(input_name, data, id) }}
+      {% endif %}
+    {% endfor %}
+  {% endcall %}
+{% endmacro %}
+
+
+{% block content %}
+  {% call panel(title=title) %}
+    {% call form(request.path, url_for('bouquet.manage')) %}
+      {% call(id, name) form_group(name='name', label='Name') %}
+        {{ input(id, name, get_json_conf(name), 'required', maxlength=255) }}
+      {% endcall %}
+
+      {% call(id, name) form_group(label='Bouquets',
+                                   tooltip='You can use mouse left click to select one or more streams and '
+                                           'use the right click to drop for rearrange the items in the M3U playlist') %}
+        <div class="card">
+          <ul class="nav nav-tabs" data-toggle="tabs">
+            <li class="nav-item"><a class="nav-link active" data-toggle="tab" href="#tab_streams">Streams</a></li>
+            <li class="nav-item"><a class="nav-link" data-toggle="tab" href="#tab_movies">Movies</a></li>
+            <li class="nav-item"><a class="nav-link" data-toggle="tab" href="#tab_series">Series</a></li>
+            <li class="nav-item">
+              <label class="form-check pt-2">
+                <input class="form-check-input" type="checkbox" onchange="select_all.call(this)">
+                <span class="form-check-label">Select ALL</span>
+              </label>
+            </li>
+          </ul>
+          <div class="card-body p-0" style="margin-right: -0.3rem">
+            <div class="tab-content">
+              <div class="tab-pane active show" id="tab_streams">
+                {{ bouquet_sortable('streams[]', streams, get_json_conf('streams') or []) }}
+              </div>
+              <div class="tab-pane" id="tab_movies">
+                {{ bouquet_sortable('movies[]', movies, get_json_conf('movies') or []) }}
+              </div>
+              <div class="tab-pane" id="tab_series">
+                {{ bouquet_sortable('series[]', series, get_json_conf('series') or []) }}
+              </div>
+            </div>
+          </div>
+        </div>
+      {% endcall %}
+    {% endcall %}
+  {% endcall %}
+
+  <script>
+      function select_all() {
+          var nav = $(this).closest('.nav.nav-tabs');
+          var tab = $('.nav-link.active.show').attr('href');
+
+          $('input[type="checkbox"]', tab).prop('checked', $(this).is(':checked'));
+      }
+  </script>
+{% endblock %}

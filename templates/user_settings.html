@@ -1,0 +1,130 @@
+{% extends "layout.html" %}
+{% from "bootstrap.html" import panel, form, form_group, input, textarea, select, select_option, selector with context %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+  {% call panel(title=title) %}
+    {% call form(request.path, url_for('user.manage')) %}
+      {% call(id, name) form_group(name='username',
+                                   label='Username',
+                                   tooltip='Click the refresh button will generate a username randomly.') %}
+        <div class="input-group">
+          {{ input(id, name, get_json_conf(name), 'required', minlength=6, maxlength=32) }}
+          <button type="button" class="btn btn-primary"
+                  onclick="document.getElementById('{{ id }}').value = generate_password(10)">
+            <i class="fa fa-redo"></i>
+          </button>
+        </div>
+      {% endcall %}
+
+      {% call(id, name) form_group(name='password',
+                                   label='Password') %}
+        <div class="input-group">
+          {{ input(id, name, get_json_conf(name), 'required', minlength=6, maxlength=32) }}
+          <button type="button" class="btn btn-primary"
+                  onclick="document.getElementById('{{ id }}').value = generate_password(10);">
+            <i class="fa fa-redo"></i>
+          </button>
+        </div>
+      {% endcall %}
+
+
+      {% if get_json_conf('package_id') %}
+        {% call(id, name) form_group(name='expire_date',
+                                     label='Expire Date') %}
+          <div class="input-group">
+            {{ input(id, name, get_json_conf(name), 'disabled', type='text') }}
+            <span class="input-group-text">
+              <i class="fa fa-calendar-alt"></i>
+            </span>
+          </div>
+          <script>
+              $(function () {
+                  $({{ selector(name) }}).flatpickr({
+                      enableTime: true,
+                      enableSeconds: true,
+                      defaultHour: 0,
+                      hourIncrement: 1,
+                      minuteIncrement: 1,
+                      time_24hr: true,
+                      dateFormat: 'Y-m-d H:i:S',
+                  })
+              });
+          </script>
+        {% endcall %}
+
+        {% call(id, name) form_group(name='max_connections',
+                                     label='Max Connections',
+                                     tooltip='Max allowed concurrent connections for the user. '
+                                             'default is 1.') %}
+          {{ input(id, name, get_json_conf(name), 'disabled',  default=1) }}
+        {% endcall %}
+      {% endif %}
+
+
+      {% call(id, name) form_group(name='package_id', label='Package') %}
+        {% call(name) select(id, name, title='\u00a0') %}
+          {% for package_id, package_name in packages %}
+            {{ select_option(package_id, get_json_conf(name), label=package_name) }}
+          {% endfor %}
+        {% endcall %}
+        <script>
+            $(function () {
+                var package_id = $('[name="package_id"]');
+
+                if (package_id.val()) {
+                    package_id.prop('disabled', true);
+                } else {
+                    package_id.prop('disabled', false);
+                }
+                package_id.selectpicker('refresh');
+            });
+        </script>
+      {% endcall %}
+
+      {% call(id, name) form_group(name='note', label='Note') %}
+        {{ textarea(id, name, get_json_conf(name), rows=5) }}
+      {% endcall %}
+
+      {% call(id, name) form_group() %}
+        {% if get_json_conf('package_id') %}
+          <label class="form-check">
+            <input class="form-check-input" type="radio" name="action" value="renew_package">
+            <span class="form-check-label">Renew Package</span>
+          </label>
+          <label class="form-check">
+            <input class="form-check-input" type="radio" name="action" value="change_package">
+            <span class="form-check-label">Change Package</span>
+          </label>
+          <label class="form-check">
+            <input class="form-check-input" type="radio" name="action" value="cancel_package">
+            <span class="form-check-label">Cancel Package</span>
+          </label>
+
+          <script>
+              $(function () {
+                  $('[name="action"]').on('change', function () {
+                      var package_id = $('[name="package_id"]');
+
+                      if ($(this).val() === 'change_package') {
+                          package_id.prop('disabled', false);
+                      } else {
+                          package_id.prop('disabled', true);
+                      }
+
+                      package_id.selectpicker('refresh');
+                  });
+              })
+          </script>
+        {% else %}
+          <label class="form-check">
+            <input class="form-check-input" type="radio" name="action" value="add_package" checked>
+            <span class="form-check-label">Add Package</span>
+          </label>
+        {% endif %}
+      {% endcall %}
+
+    {% endcall %}
+  {% endcall %}
+{% endblock %}

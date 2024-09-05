@@ -1,0 +1,817 @@
+{% extends "layout.html" %}
+{% from "bootstrap.html" import colorful_label, form_group, float_group, float_label, input, select, select_option, modal, table, sortable with context %}
+
+{% block title %}Manage Streams{% endblock %}
+
+{% block content %}
+  {% set columns = ['ID', 'Name', 'Category', 'Profile', 'Server', 'HWAccel', 'CPU', 'Memory', 'GPU Dec', 'GPU Memory', 'GPU Enc',
+                    'Bitrate', 'Quality', 'FPS', 'Time', 'Speed', 'Connections', 'Errors', 'Status', 'Settings  '] %}
+  {% set columnDefs = [
+      {'type': 'uptime', 'targets': 14},
+      {'type': 'number', 'targets': 15},
+  ] %}
+  {% set toolbar = [
+      '<button type="button" class="btn btn-primary" onclick="stream_batch_control(\'start\')">Start Streams</button>',
+      '<button type="button" class="btn btn-danger" onclick="stream_batch_control(\'stop\')">Stop Streams</button>',
+      '<button type="button" class="btn btn-warning" onclick="stream_batch_control(\'restart\')">Restart Streams</button>',
+      '<button type="button" class="btn btn-vimeo" onclick="reset_errors()">Reset Errors</button>',
+      '<button type="button" class="btn btn-info" data-toggle="modal" data-target="#export-playlist">Export Playlist</button>',
+      '<button type="button" class="btn btn-indigo" data-toggle="modal" data-target="#mass-edit">Mass Edit</button>',
+      '<button type="button" class="btn btn-purple" data-toggle="modal" data-target="#stream-transfer">Stream Transfer</button>'
+  ] %}
+
+  <script>
+      var streams = [
+      {% for stream in streams %}
+          '<tr id="stream-{{ stream.id }}-row" data-stream-id="{{ stream.id }}" data-id="{{ stream.id }}" data-name="{{ stream.name }}" onclick="stream_details.call(this, event)">' +
+          '  <td class="stream-id">{{ stream.id }}</td>' +
+          '  <td><div class="badge bg-primary stream-name">{{ stream.name }}</div></td>' +
+          '  <td class="stream-category">{{ colorful_label(stream.config.category or '') }}</td>' +
+          '  <td class="stream-profile">{{ colorful_label(stream.profile_name or '') }}</td>' +
+          '  <td class="stream-server">{{ colorful_label(stream.server_name) }}</td>' +
+          '  <td class="stream-hwaccel">' +
+          {% for hwaccel in (stream.hwaccel or '').split(' ') %}
+          '    {{ colorful_label(hwaccel) }}' +
+          {% endfor %}
+          '  </td>' +
+          '  <td class="stream-cpu">{{ '%2.1f%%'|format(stream.cpu_percent) }}</td>' +
+          '  <td class="stream-memory">{{ '%dMiB'|format(stream.mem_rss / 1048576) }}</td>' +
+          '  <td class="stream-gpu-dec">{{ '%2.1f%%'|format(stream.gpu_dec) }}</td>' +
+          '  <td class="stream-gpu-mem">{{ '%dMiB'|format(stream.gpu_mem) }}</td>' +
+          '  <td class="stream-gpu-enc">{{ '%2.1f%%'|format(stream.gpu_enc) }}</td>' +
+          '  <td class="stream-bitrate">{% if stream.bitrate %}{{ '%7gkbits/s'|format(stream.bitrate) }} {% else %} N/A {% endif %}</td>' +
+          '  <td class="stream-quality">{{ '%2.1f'|format(stream.quality) }}</td>' +
+          '  <td class="stream-fps">{{ '%g'|format(stream.fps) }}</td>' +
+          '  <td><div class="stream-time">{{ struptime(stream.time) }}</div></td>' +
+          '  <td class="stream-speed">{{ '%gx'|format(stream.speed) }}</td>' +
+          '  <td class="stream-connections">{{ stream.nb_connections }}</td>' +
+          '  <td class="stream-errors">{{ stream.errors or 0 }}</td>' +
+          '  <td class="stream-status">{{ colorful_label(stream.status|upper) }}</td>' +
+          '  <td>' +
+          '    <div style="display: none">"{{ printable(stream.config.input_urls|join(', ')) }}"</div>' +
+          {% set title = 'start' %}
+          {% set class = 'fa fa-play text-success' %}
+
+          {% if stream['status'] != 'stopped' %}
+              {% set title = 'stop' %}
+              {% set class = 'fa fa-stop text-danger' %}
+          {% endif %}
+
+          '    <button type="button" class="btn btn-link" onclick="stream_control.call(this, event)">' +
+          '      <i class="{{ class }} stream-control-icon" title="{{ title }}"></i>' +
+          '    </button>' +
+          '    <button type="button" class="btn btn-link" data-url="/stream/{{ stream.id }}/videojs" onclick="stream_player.call(this, event)">' +
+          '      <i class="fa fa-play-circle" title="player"></i>' +
+          '    </button>' +
+          '    <a href="/stream/{{ stream.id }}/settings" class="btn btn-link">' +
+          '      <i class="fa fa-cog" title="settings"></i>' +
+          '    </a>' +
+          '    <button type="button" class="btn btn-link" onclick="balancers_graph({{ '%d, "%s"'|format(stream.id, stream.name) }})">' +
+          '      <i class="fa fa-project-diagram" title="load balancing graph"></i>' +
+          '    </button>' +
+          '    <a href="/stream/{{ stream.id }}/copy" class="btn btn-link">' +
+          '      <i class="fa fa-copy" title="copy"></i>' +
+          '    </a>' +
+          '    <a href="/stream/{{ stream.id }}/log" class="btn btn-link">' +
+          '      <i class="fa fa-file" title="log"></i>' +
+          '    </a>' +
+          '    <form action="/stream/{{ stream.id }}/delete" method="post">' +
+          '      <button type="submit" class="btn btn-link"' +
+          '              data-toggle="confirmation"' +
+          '              data-message="Please confirm to delete the stream {{ stream.id }} {{ stream.name}}?">' +
+          '        <i class="fa fa-times text-danger" title="delete"></i>' +
+          '      </button>' +
+          '    </form>' +
+          '  </td>' +
+          '</tr>'
+          {% if not loop.last %},{% endif %}
+      {% endfor %}
+      ];
+  </script>
+
+  {% call table(columns=columns, disabled=[2, 3, 6, 7, 8, 9, 10, 17], columnDefs=columnDefs, toolbar=toolbar, data='streams') %}
+  {% endcall %}
+
+  {% call modal(id='modal-balancers', title='') %}
+    <div class="modal-body">
+      <div class="mermaid" id="mermaid-balancers" style="text-align: center"></div>
+    </div>
+  {% endcall %}
+
+  {% call modal(id='export-playlist', title='Export Playlist') %}
+    <div class="modal-body">
+      <form id="export-settings">
+        <p class="card-subtitle">You can use mouse left click to select one or more streams and use the right click to drop for rearrange the streams in M3U playlist</p>
+        {% call sortable() %}
+          {% for stream in streams|sort(attribute='export_order,id') %}
+            <div class="list-group-item" data-id="{{ stream['id'] }}">
+              <div class="badge bg-primary">{{ stream['name'] }}</div>
+              <input name="streams" value="{{ stream['id'] }}" type="hidden">
+              <input name="streams_enabled" type="checkbox" value="{{ stream['id'] }}" class="form-check float-right mr-3" {% if not stream['export_disabled'] %} checked {% endif %}>
+            </div>
+          {% endfor %}
+        {% endcall %}
+      </form>
+
+      <form action="{{ url_for('stream.playlist') }}" method="get">
+        <div class="form-group row pt-3">
+          <label class="form-label col-3 col-form-label pt-0">Attributes</label>
+          <div class="col">
+            <label class="form-check form-switch">
+              <input name="attributes" value="tvg-id" type="checkbox" class="form-check-input" checked>
+              <span class="form-check-label">TVG-ID</span>
+            </label>
+
+            <label class="form-check form-switch">
+              <input name="attributes" value="tvg-name" type="checkbox" class="form-check-input" checked>
+              <span class="form-check-label">TVG-NAME</span>
+            </label>
+
+            <label class="form-check form-switch">
+              <input name="attributes" value="group-title" type="checkbox" class="form-check-input" checked>
+              <span class="form-check-label">GROUP TITLE</span>
+            </label>
+          </div>
+        </div>
+
+
+        <div class="form-group row">
+          <label class="form-label col-3 col-form-label pt-0">Protocol</label>
+          <div class="col">
+            <div class="form-selectgroup">
+              <label class="form-selectgroup-item">
+                <input type="radio" name="protocol" value="hls" class="form-selectgroup-input" checked>
+                <span class="form-selectgroup-label">HLS</span>
+              </label>
+              <label class="form-selectgroup-item">
+                <input type="radio" name="protocol" value="http" class="form-selectgroup-input">
+                <span class="form-selectgroup-label">HTTP</span>
+              </label>
+              <label class="form-selectgroup-item">
+                <input type="radio" name="protocol" value="rtmp" class="form-selectgroup-input">
+                <span class="form-selectgroup-label">RTMP</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group float-right">
+          <button type="submit" class="btn btn-info">Download<i class="fa fa-cloud-download ml-3"></i></button>
+          <button type="button" class="btn btn-primary" onclick="save_playlist_settings.call(this, event)">Save<i class="fa fa-cog ml-3"></i></button>
+        </div>
+      </form>
+
+    </div>
+  {% endcall %}
+
+
+  {% call modal(id='stream-transfer', title='Stream Transfer', size='lg') %}
+    {% set mass_edit_layout=(2, 2, 5, 3) %}
+    <div class="modal-body">
+      <form class="form-horizontal" data-toggle="validator" method="post">
+        {% call(id, name) form_group(name='url', label='URL',
+                                     tooltip='Please fill the target xaccel panel\'s URL here, '
+                                              'example: http://host:port or https://host:port if the https is enabled '
+                                              'in target server.',
+                                     layout=mass_edit_layout) %}
+          {{ input(id, name, get_json_conf(name), type='text', pattern='(http|https):\/\/[^\/]*') }}
+        {% endcall %}
+
+        {% call(id, name) form_group(name='token', label='API Token',
+                                     tooltip='You can login to the target xaccel panel, go to the '
+                                             '<code>Account > Manage Accounts > Account Settings</code> page, '
+                                             'click the refresh icon <i class="fa fa-redo text-primary"></i> '
+                                             'at right of <code>API Token</code> option for generate the API token.',
+                                     layout=mass_edit_layout) %}
+          {{ input(id, name, get_json_conf(name)) }}
+        {% endcall %}
+
+        {% call(id, name) form_group(name='mode', label='Mode',
+                                     tooltip='Transfer mode will move the stream to the target xaccel panel, '
+                                             'the stream will disappear on this panel after transfer. But if '
+                                             'you need keep the stream on this server, please use Clone mode.',
+                                     layout=mass_edit_layout) %}
+          {% call(name) select(id, name, default='clone') %}
+            {{ select_option('transfer', get_json_conf(name), tags=['Transfer']) }}
+            {{ select_option('clone', get_json_conf(name), tags=['Clone']) }}
+          {% endcall %}
+        {% endcall %}
+
+        {% call(id, name) form_group(name='skip_profile', label='Skip Stream Profile',
+                                     tooltip='The stream profile will be transferred in default. '
+                                             'Setup this option to No will use the stream profile '
+                                             'to create the stream, but the profile won\'t be created.',
+                                     layout=mass_edit_layout) %}
+          {% call(name) select(id, name, default='no') %}
+            {{ select_option('yes', get_json_conf(name), label='Yes') }}
+            {{ select_option('no', get_json_conf(name), label='No') }}
+          {% endcall %}
+        {% endcall %}
+
+        {% call(id, name) form_group(layout=mass_edit_layout) %}
+          <div class="form-group float-right">
+            <button type="button" class="btn btn-primary" onclick="stream_transfer.call(this, event)">Transfer</button>
+          </div>
+        {% endcall %}
+      </form>
+    </div>
+  {% endcall %}
+
+  {% call modal(id='mass-edit', title='Mass Edit', size='lg') %}
+    {% set mass_edit_layout=(2, 2, 5, 3) %}
+    <div class="modal-body">
+      <form>
+        {% call(id, name) form_group(name='options',
+                                     label='Edit Options',
+                                     tooltip='Select the options you want to mass edit.',
+                                     layout=mass_edit_layout) %}
+          {% call(name) select(id, name, 'multiple', title='\u00a0',
+                           **{'data-actions-box': true, 'data-multiple-separator': ' ', 'data-size': 10}) %}
+            {{ select_option('category', get_json_conf(name), tags=['Category']) }}
+            {{ select_option('proxy', get_json_conf(name), tags=['Proxy']) }}
+            {{ select_option('user_agent', get_json_conf(name), tags=['User Agent']) }}
+            {{ select_option('referer', get_json_conf(name), tags=['HTTP Referer']) }}
+            {{ select_option('headers', get_json_conf(name), tags=['HTTP Headers']) }}
+            {{ select_option('fflags', get_json_conf(name), tags=['Format Flags']) }}
+            {{ select_option('sleep', get_json_conf(name), tags=['Sleep Schedule']) }}
+            {{ select_option('timeshift', get_json_conf(name), tags=['Timeshift']) }}
+            {{ select_option('restart', get_json_conf(name), tags=['Restart Schedule']) }}
+            {{ select_option('on_demand', get_json_conf(name), tags=['Stream On Demand']) }}
+            {{ select_option('rate_emulation', get_json_conf(name), tags=['Rate Emulation']) }}
+            {{ select_option('profile_id', get_json_conf(name), tags=['Stream Profile']) }}
+            {{ select_option('video_map', get_json_conf(name), tags=['Video Map']) }}
+            {{ select_option('audio_map', get_json_conf(name), tags=['Audio Map']) }}
+            {{ select_option('subtitle_map', get_json_conf(name), tags=['Subtitle Map']) }}
+            {{ select_option('service_provider', get_json_conf(name), tags=['Service Provider']) }}
+            {{ select_option('sys_mem_max,gpu_mem_max', get_json_conf(name), tags=['Memory Limit']) }}
+            {{ select_option('speed_min,speed_max', get_json_conf(name), tags=['Speed Limit']) }}
+            {{ select_option('fps_min,fps_max', get_json_conf(name), tags=['FPS Limit']) }}
+            {{ select_option('output_time', get_json_conf(name), tags=['HLS Time']) }}
+            {{ select_option('output_list_size', get_json_conf(name), tags=['HLS/DASH List Size']) }}
+            {{ select_option('output_buffer_size', get_json_conf(name), tags=['HTTP-TS Buffer Size']) }}
+          {% endcall %}
+        {% endcall %}
+        {% from "bootstrap.html" import category_option with context %}
+        {% from "stream_options.html" import proxy_option, user_agent_option, referer_option, headers_option,
+                                             fflags_option, sleep_option, timeshift_option, restart_option, on_demand_option,
+                                             rate_emulation_option, video_map_option, audio_map_option, subtitle_map_option,
+                                             service_provider_option, memory_limit_option, speed_limit_option,
+                                             fps_limit_option with context %}
+        {{ category_option(layout=mass_edit_layout) }}
+        {{ proxy_option(layout=mass_edit_layout) }}
+        {{ user_agent_option(layout=mass_edit_layout) }}
+        {{ referer_option(layout=mass_edit_layout) }}
+        {{ headers_option(layout=mass_edit_layout) }}
+        {{ fflags_option(layout=mass_edit_layout) }}
+        {{ sleep_option(layout=mass_edit_layout) }}
+        {{ timeshift_option(layout=mass_edit_layout) }}
+        {{ restart_option(layout=mass_edit_layout) }}
+        {{ on_demand_option(layout=mass_edit_layout) }}
+        {{ rate_emulation_option(layout=mass_edit_layout) }}
+        {% call(id, name) form_group(name='profile_id', label='Stream Profile', layout=mass_edit_layout) %}
+          {% call(name) select(id, name, title='\u00a0',
+                               **{'data-size': 20,
+                                  'data-live-search': true,
+                                  'data-live-search-placeholder': 'Search'}) %}
+            {{ select_option('', get_json_conf(name), label='\u00a0') }}
+            {% for profile in get_all_profiles() %}
+              {{ select_option(profile.id|string, get_json_conf(name), label=profile.name, tags=[profile.server_name]) }}
+            {% endfor %}
+          {% endcall %}
+        {% endcall %}
+        {{ video_map_option(layout=mass_edit_layout) }}
+        {{ audio_map_option(layout=mass_edit_layout) }}
+        {{ subtitle_map_option(layout=mass_edit_layout) }}
+        {{ service_provider_option(layout=mass_edit_layout) }}
+        {{ memory_limit_option(layout=mass_edit_layout) }}
+        {{ speed_limit_option(layout=mass_edit_layout) }}
+        {{ fps_limit_option(layout=mass_edit_layout) }}
+        {% call(id, name) form_group(name='output_time', label='HLS Time', layout=mass_edit_layout) %}
+          {{ input(id, name, get_json_conf(name)) }}
+        {% endcall %}
+        {% call(id, name) form_group(name='output_list_size', label='HLS/DASH List Size', layout=mass_edit_layout) %}
+          {{ input(id, name, get_json_conf(name)) }}
+        {% endcall %}
+        {% call(id, name) form_group(name='output_buffer_size', label='HTTP-TS Buffer Size', layout=mass_edit_layout) %}
+          {{ input(id, name, get_json_conf(name)) }}
+        {% endcall %}
+        {% call(id, name) form_group(layout=mass_edit_layout) %}
+          <div class="form-group float-right">
+            <button type="button" class="btn btn-primary" onclick="stream_mass_edit.call(this, event)">Save</button>
+          </div>
+        {% endcall %}
+        <script>
+            $('[name="options"]').on('change', function () {
+                var selected = [];
+                $(this).val().forEach(function (val) {
+                    selected = selected.concat(val.split(','));
+                });
+
+                $('option', $(this)).each(function () {
+                    $(this).prop('value').split(',').forEach(function (val) {
+                        var opt = $('[name^="' + val + '"]');
+                        var form_group = opt.closest('.form-group');
+
+                        if (selected.includes(val)) {
+                            form_group.slideDown();
+                        } else {
+                            form_group.slideUp();
+                        }
+                    });
+                });
+            }).trigger('change');
+        </script>
+      </form>
+    </div>
+  {% endcall %}
+
+  <script>
+      function save_playlist_settings(event) {
+          event.preventDefault();
+          var modal = $(this).closest('.modal');
+
+          modal.fadeOut().modal('hide');
+          $.ajax({
+              url: "{{ url_for('stream.playlist_settings') }}",
+              type: 'POST',
+              dataType: 'json',
+              data: $('#export-settings').serialize(),
+              success: function (result) {
+                  if ('error' in result) {
+                      flash_message(result['error']);
+                  } else {
+                      flash_message('Stream playlist settings is updated successfully', 'success');
+                  }
+              }
+          });
+      }
+
+      function stream_batch_control(action) {
+          var html = [];
+          var data = [];
+
+          mass_select_each(function () {
+              data.push($(this).data('id'));
+              html.push('<div class="badge bg-primary">' + $(this).data('name') + '</div>');
+          });
+
+          if (data.length <= 0) {
+              mass_select_each(function () {
+                  data.push($(this).data('id'));
+                  html.push('<div class="badge bg-primary">' + $(this).data('name') + '</div>');
+              }, 'input');
+          }
+
+          var dialog = bootbox.dialog({
+              message: 'Please confirm to ' + action + ' following streams?' + '<p/>' + html.join('\n'),
+              closeButton: false,
+              onEscape: true,
+              centerVertical: true,
+              buttons: {
+                  cancel: {
+                      label: 'Cancel',
+                      className: 'btn btn-secondary',
+                      callback: function () {
+                          $(this).fadeOut();
+                      }
+                  },
+                  confirm: {
+                      label: 'Confirm',
+                      className: 'btn btn-danger',
+                      callback: function () {
+                          $.post({
+                              url: '/stream/batch-control/' + action,
+                              data: {'streams': data.join(',')},
+                          })
+                      }
+                  }
+              }
+          });
+      }
+
+      function reset_errors() {
+          $.post({
+              url: '{{ url_for('stream.reset_errors') }}',
+              dataType: 'json',
+              success: function (result) {
+                  if ('error' in result)
+                      flash_message(result['error']);
+                  else
+                      flash_message('Stream errors reset successfully', 'success');
+              }
+          });
+      }
+
+      function stream_transfer() {
+          var html = [];
+          var streams = [];
+          var form = $(this).closest('form');
+
+          mass_select_each(function () {
+              streams.push('streams[]=' + $(this).data('id'));
+              html.push('<div class="badge bg-primary">' + $(this).data('name') + '</div>');
+          });
+
+          $.post({
+              url: '{{ url_for('stream.transfer') }}',
+              data: form.serialize() + '&' + streams.join('&'),
+              dataType: 'json',
+              success: function (result) {
+                  if ('error' in result)
+                      flash_message(result['error']);
+                  else
+                      flash_message('Stream transferred successfully', 'success');
+              }
+          }).done(function (data) {
+              $('#stream-transfer').fadeOut().modal('hide');
+          });
+      }
+
+      function stream_mass_edit() {
+          var html = [];
+          var streams = [];
+          var form = $(this).closest('form');
+
+          mass_select_each(function () {
+              streams.push('streams[]=' + $(this).data('id'));
+              html.push('<div class="badge bg-primary">' + $(this).data('name') + '</div>');
+          });
+
+          $.post({
+              url: '{{ url_for('stream.mass_edit') }}',
+              data: form.serialize() + '&' + streams.join('&'),
+              dataType: 'json',
+              success: function (result) {
+                  if ('error' in result)
+                      flash_message(result['error']);
+                  else
+                      flash_message('Mass edit settings is saved successfully', 'success');
+              }
+          }).done(function (data) {
+              $('#mass-edit').fadeOut().modal('hide');
+          });
+      }
+
+      function balancers_graph(stream_id, name) {
+          var graph = $('#modal-balancers');
+
+          $('.modal-title', graph).html(name + ' Balancers');
+          $('#mermaid-balancers').html('<div class="spinner-border text-blue"></div>');
+
+          if (typeof this.interval !== 'undefined')
+              clearInterval(this.interval);
+
+          this.interval = setInterval(function () {
+              $.ajax({
+                  url: v.sprintf('/stream/%d/balancers', stream_id),
+                  success: function (result) {
+                      if (result) {
+                          mermaid.render('mermaid-balancers-inner', result, function (svg) {
+                              $('#mermaid-balancers').html(svg);
+                          });
+                      } else {
+                          $('#mermaid-balancers').html('No load balancers!');
+                      }
+                  }
+              })
+          }, 1000);
+
+          graph.modal('show')
+      }
+
+      function format_card(content) {
+          if (content === '')
+              return '';
+
+          return v.sprintf('<div style="border: 1px solid rgba(0, 0, 0, 0.1)">%s</div>', content);
+      }
+
+      function format_row_6x6(left, right) {
+          if (left === '' && right === '')
+              return '';
+
+          return v.sprintf('<div class="row">' +
+                           '  <div class="col-md-6">%s</div>' +
+                           '  <div class="col-md-6">%s</div>' +
+                           '</div>', left, right);
+      }
+
+      function copy_button(text) {
+          return v.sprintf('<button class="btn btn-link" data-clipboard-text="%s">' +
+                           '  <i class="fa fa-copy" title="copy"></i>' +
+                           '</button>', text)
+      }
+
+      function format_stream_usage(stream) {
+          var left = [];
+          var right = [];
+
+          if ('cpu_percent' in stream)
+              left.push(v.sprintf('CPU Usage: %5.1f%%', stream.cpu_percent));
+
+          if ('mem_rss' in stream)
+              left.push(v.sprintf('System Memory Usage: %d MiB', stream.mem_rss >> 20));
+
+          if ('gpu_dec' in stream && 'gpu_enc' in stream && 'gpu_sm' in stream)
+              right.push(v.sprintf('GPU Usage: DEC %5.1f%% SM %5.1f%% ENC %5.1f%%',
+                  stream.gpu_dec, stream.gpu_sm, stream.gpu_enc));
+
+          if ('gpu_mem' in stream)
+              right.push(v.sprintf('Graphics Memory Usage: %d MiB', stream.gpu_mem));
+
+          return format_row_6x6(left.join('<br/>'), right.join('<br/>'));
+      }
+      
+      function format_text_ellipsis(text) {
+          return v.sprintf('<div style="display: inline-block;  text-overflow: ellipsis;' +
+                           '            overflow: hidden; white-space: nowrap;' +
+                           '            max-width: 90%%; margin-bottom: -0.5em">%s</div>', text);
+      }
+
+      function format_stream_urls(stream) {
+          var left = [];
+          var right = [];
+
+          stream.input_urls.forEach(function (url, index) {
+              var inuse = '';
+
+              if (index === stream.input_index)
+                  inuse = v.sprintf('<i class="fa fa-check text-green"></i>');
+
+              left.push(format_text_ellipsis('Input #' + (index + 1) + ': ' + url) + copy_button(url) + inuse);
+          });
+
+          stream.outputs.forEach(function (obj, index) {
+              var url = obj['url'];
+              var connections = '';
+
+              if (obj['connections'] > 0)
+                  connections = v.sprintf('<div class="text-green text-bold" style="display: inline-block;">%d connections</div>', obj['connections']);
+
+              right.push(format_text_ellipsis('Output #' + (index + 1) + ': ' + url) + copy_button(url) + connections);
+          });
+
+          return format_row_6x6(left.join('<br/>'), right.join('<br/>'));
+      }
+
+      function format_avstream(avstream) {
+          var desc = v.sprintf('Stream #%d:%d', avstream['index'], avstream['stream_index']);
+
+          if ('pid' in avstream)
+              desc += v.sprintf('[0x%x]', avstream['pid']);
+          if ('lang' in avstream)
+              desc += v.sprintf('(%s)', avstream['lang']);
+
+          desc += v.sprintf(': %s: %s', avstream['type'], avstream['codec']);
+          if ('pix_fmt' in avstream)
+              desc += v.sprintf(', %s', avstream['pix_fmt']);
+          if ('width' in avstream && 'height' in avstream)
+              desc += v.sprintf(', %dx%d', avstream['width'], avstream['height']);
+          if ('fps' in avstream)
+              desc += v.sprintf(', %g fps', avstream['fps']);
+          if ('sample_rate' in avstream)
+              desc += v.sprintf(', %d Hz', avstream['sample_rate']);
+          if ('channel_layout' in avstream)
+              desc += v.sprintf(', %s', avstream['channel_layout']);
+          if ('sample_fmt' in avstream)
+              desc += v.sprintf(', %s', avstream['sample_fmt']);
+          if ('bitrate' in avstream)
+              desc += v.sprintf(', %s kb/s', avstream['bitrate'])
+          return desc;
+      }
+
+      function format_stream_streaminfo(stream) {
+          var left = [];
+          var right = [];
+
+          if ('input' in stream.streaminfo) {
+              stream.streaminfo['input'].forEach(function (stream) {
+                  left.push(format_avstream(stream));
+              });
+          }
+
+          if ('output' in stream.streaminfo) {
+              stream.streaminfo['output'].forEach(function (stream) {
+                  right.push(format_avstream(stream));
+              });
+          }
+
+          return format_row_6x6(left.join('<br/>'), right.join('<br/>'));
+      }
+
+      function format_stream_fileinfo(stream) {
+          if (!Array.isArray(stream.fileinfo))
+              return '';
+
+          var html = [
+              '<div class="row text-bold">' +
+              '  <div class="col-md-7">Filename</div>' +
+              '  <div class="col-md-1">Duration</div>' +
+              '  <div class="col-md-1">In Size</div>' +
+              '  <div class="col-md-1">Out Size</div>' +
+              '  <div class="col-md-1">Progress</div>' +
+              '  <div class="col-md-1">Status</div>' +
+              '</div>'
+          ];
+          stream.fileinfo.forEach(function (info) {
+              var status;
+
+              if (info.running)
+                  status = '<i class="fas fa-spinner text-primary"></i>';
+              else if (parseInt(info.progress) === 100)
+                  status = '<i class="fas fa-check text-success"></i>';
+              else
+                  status = '<i class="fas fa-stop text-danger"></i>';
+
+              html.push(v.sprintf(
+                  '<div class="row">' +
+                  '  <div class="col-md-7">%s</div>' +
+                  '  <div class="col-md-1">%s</div>' +
+                  '  <div class="col-md-1">%s</div>' +
+                  '  <div class="col-md-1">%s</div>' +
+                  '  <div class="col-md-1">%.1f%%</div>' +
+                  '  <div class="col-md-1">%s</div>' +
+                  '</div>',
+                  info.filename, struptime(info.duration), filesize(info.insize), filesize(info.outsize), info.progress, status
+              ));
+          });
+          return html.join('');
+      }
+
+      function format_stream_connections(stream) {
+          var html = [];
+
+          stream.connections.forEach(function (connection) {
+              var duration = connection.duration;
+              var hours = Math.trunc(duration / 3600);
+              var minutes = Math.trunc((duration - hours * 3600) / 60);
+              var seconds = duration % 60;
+
+              html.push(v.sprintf(
+                  '<div class="flex-box">' +
+                  '  <div class="flex-box-tag">%s</div>' +
+                  '  <div style="font-size: 75%%;">%02d:%02d:%02d</div>' +
+                  '  <div>%s</div>' +
+                  '</div>', connection.protocol, hours, minutes, seconds, connection.address));
+          });
+
+          return html.join('');
+      }
+
+      function stream_details(e) {
+          if (!$(e.target).is('td,div.badge'))
+              return;
+
+          var stream_id =$(this).data('stream-id');
+          var tr = $(v.sprintf('#stream-%d-row', stream_id));
+          var row = table.row(tr);
+          var child_id = v.sprintf('stream-%d-child', stream_id);
+
+          if (row.child.isShown()) {
+              $('#' + child_id, row.child()).slideUp(function () {
+                  row.child.hide();
+                  tr.removeClass('shown');
+                  tr.trigger('hide');
+              });
+          } else {
+              if (row.child() && row.child().length > 0) {
+                  row.child.show();
+              } else {
+                  var interval = setInterval(function stream_details_render() {
+                      $.ajax({
+                          url: v.sprintf('/stream/%d/stats', stream_id),
+                          success: function (stream) {
+                              var child = $('#' + child_id, row.child());
+                              var show = false;
+
+                              if (child.length === 0) {
+                                  row.child('<div id="' + child_id + '" ' +
+                                            '     style="display: none; font-family: monospace; font-size: 80%;">' +
+                                            '</div>', 'child-row');
+                                  child = $('#' + child_id, row.child());
+                                  show = true;
+                              }
+
+                              if (!window.getSelection().baseNode ||
+                                  !window.getSelection().baseNode.parentNode.closest('#' + child_id)) {
+                                  var width = $('.table-responsive').width() - 50;
+                                  child.html('<div style="max-width: ' + width + 'px">' +
+                                             '  <br/>' + format_stream_usage(stream) +
+                                             '  <br/>' + format_stream_urls(stream) +
+                                             '  <br/>' + format_stream_streaminfo(stream) +
+                                             '  <br/>' + format_stream_fileinfo(stream) +
+                                             '  <br/>' + format_stream_connections(stream) +
+                                             '</div>');
+                              }
+
+                              if (show) {
+                                  row.child.show();
+                                  child.slideDown();
+                                  tr.addClass('shown');
+                              }
+                          }
+                      });
+
+                      return stream_details_render;
+                  }(), 1000);
+
+                  tr.on('hide', function () {
+                      clearInterval(interval);
+                      row.child.remove()
+                  });
+
+              }
+          }
+      }
+
+      function stream_control() {
+          var tr = $(this).closest('tr');
+          var stream_id = tr.data('id');
+          var status = tr.data('status');
+          var url = v.sprintf('/stream/%d/start', stream_id);
+
+          if (status !== 'stopped')
+              url = v.sprintf('/stream/%d/stop', stream_id);
+
+          $.ajax({
+              url: url,
+              type: 'POST',
+              dataType: 'json',
+              success: function (result) {
+                  if ('error' in result) {
+                      flash_message(result['error']);
+                  }
+              }
+          });
+      }
+
+      function stream_player() {
+          var width = 852;
+          var height = 480;
+          var left = (screen.width - width) / 2;
+          var top = (screen.height - height) / 2;
+          var url = $(this).data('url');
+          var features = v.sprintf('width=%d,height=%d,left=%d,top=%d', width, height, left, top);
+
+          window.open(url, v.sprintf('videojs player for %s', url), features);
+      }
+
+      function stream_stats_update() {
+          $.ajax({
+              url: '/stream/stats',
+              success: function (result) {
+                  result.forEach(function (stream) {
+                      var tr = document.getElementById('stream-' + stream.id + '-row');
+                      if (!tr)
+                          return;
+
+                      $(tr).data('status', stream.status);
+                      element_update(tr.getElementsByClassName('stream-name')[0], stream.name);
+                      element_update(tr.getElementsByClassName('stream-category')[0], colorful_label(stream.category));
+                      element_update(tr.getElementsByClassName('stream-profile')[0], colorful_label(stream.profile_name));
+                      element_update(tr.getElementsByClassName('stream-server')[0], colorful_label(stream.server_name));
+                      element_update(tr.getElementsByClassName('stream-hwaccel')[0], (stream.hwaccel || '').split(' ').filter(function (i) { return i; }).map(colorful_label).join('\n'));
+                      element_update(tr.getElementsByClassName('stream-cpu')[0], stream.cpu_percent + '%');
+                      element_update(tr.getElementsByClassName('stream-memory')[0], v.sprintf('%dMiB', stream.mem_rss / 1048576));
+                      element_update(tr.getElementsByClassName('stream-gpu-dec')[0], v.sprintf('%2.1f%%', stream.gpu_dec));
+                      element_update(tr.getElementsByClassName('stream-gpu-mem')[0], v.sprintf('%dMiB', stream.gpu_mem));
+                      element_update(tr.getElementsByClassName('stream-gpu-enc')[0], v.sprintf('%2.1f%%', stream.gpu_enc));
+                      element_update(tr.getElementsByClassName('stream-bitrate')[0], stream.bitrate ? v.sprintf('%7gkbits/s', stream.bitrate) : 'N/A');
+                      element_update(tr.getElementsByClassName('stream-quality')[0], v.sprintf('%2.1f', stream.quality));
+                      element_update(tr.getElementsByClassName('stream-fps')[0], v.sprintf('%g', stream.fps));
+                      element_update(tr.getElementsByClassName('stream-time')[0], struptime(stream.time));
+                      element_update(tr.getElementsByClassName('stream-speed')[0], v.sprintf('%gx', stream.speed));
+                      element_update(tr.getElementsByClassName('stream-connections')[0], stream.nb_connections);
+                      element_update(tr.getElementsByClassName('stream-errors')[0], stream.errors);
+                      element_update(tr.getElementsByClassName('stream-status')[0], colorful_label(stream.status.toUpperCase()));
+
+                      var stream_control_icon = tr.getElementsByClassName('stream-control-icon')[0];
+                      if (stream_control_icon !== undefined) {
+                          if (stream.status !== 'stopped') {
+                              stream_control_icon.title = 'stop';
+                              stream_control_icon.className = 'fa fa-stop text-danger stream-control-icon';
+                          } else {
+                              stream_control_icon.title = 'start';
+                              stream_control_icon.className = 'fa fa-play text-success stream-control-icon';
+                          }
+                      }
+
+                      var time_div = tr.getElementsByClassName('stream-time')[0];
+                      if (stream.status === 'restarting' && stream.time > 0) {
+                          time_div.className = 'stream-time blink';
+                      } else {
+                          time_div.className = 'stream-time';
+                      }
+                  });
+              },
+              complete: function (result) {
+                  setTimeout(function () {
+                      stream_stats_update();
+                  }, 500);
+              }
+          });
+      }
+
+      stream_stats_update();
+  </script>
+{% endblock %}

@@ -1,0 +1,1058 @@
+{% from "bootstrap.html" import alert, file_upload_modal, kwargs_options with context %}
+
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+    <meta http-equiv="X-UA-Compatible" content="ie=edge"/>
+    <title>{% block title %} {% endblock %} - X Acceleration Codec</title>
+    <meta name="msapplication-TileColor" content="#206bc4"/>
+    <meta name="theme-color" content="#206bc4"/>
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+    <meta name="apple-mobile-web-app-capable" content="yes"/>
+    <meta name="mobile-web-app-capable" content="yes"/>
+    <meta name="HandheldFriendly" content="True"/>
+    <meta name="MobileOptimized" content="320"/>
+    <meta name="robots" content="noindex,nofollow,noarchive"/>
+    <link rel="icon" href="./favicon.ico" type="image/x-icon"/>
+    <link rel="shortcut icon" href="./favicon.ico" type="image/x-icon"/>
+  {% macro stylesheet(url) -%}
+    <link href="{{ url }}?version={{ config.VERSION }}" rel="stylesheet">
+  {%- endmacro %}
+  {% macro script(url) -%}
+    <script src="{{ url }}?version={{ config.VERSION }}"></script>
+  {%- endmacro %}
+    <!-- Libs CSS -->
+    {{ stylesheet("/static/tabler/libs/jqvmap/dist/jqvmap.min.css") }}
+    {{ stylesheet("/static/tabler/libs/selectize/dist/css/selectize.css") }}
+    {{ stylesheet("/static/tabler/libs/fullcalendar/core/main.min.css") }}
+    {{ stylesheet("/static/tabler/libs/fullcalendar/daygrid/main.min.css") }}
+    {{ stylesheet("/static/tabler/libs/fullcalendar/timegrid/main.min.css") }}
+    {{ stylesheet("/static/tabler/libs/fullcalendar/list/main.min.css") }}
+    {{ stylesheet("/static/tabler/libs/flatpickr/dist/flatpickr.min.css") }}
+    {{ stylesheet("/static/tabler/libs/nouislider/distribute/nouislider.min.css") }}
+    <!-- Tabler Core -->
+    {{ stylesheet("/static/tabler/css/tabler.min.css") }}
+    <!-- Tabler Plugins -->
+    {{ stylesheet("/static/tabler/css/tabler-flags.min.css") }}
+    {{ stylesheet("/static/tabler/css/tabler-payments.min.css") }}
+    {{ stylesheet("/static/tabler/css/tabler-buttons.min.css") }}
+    {{ stylesheet("/static/css/font-awesome.min.css") }}
+    {{ stylesheet("/static/css/datatables.css") }}
+    {{ stylesheet("/static/css/bootstrap-select.min.css") }}
+    {{ stylesheet("/static/css/bootstrap-float-label.min.css") }}
+    {{ stylesheet("/static/css/fileinput.min.css") }}
+    {{ stylesheet("/static/css/custom.css") }}
+    <!-- Libs JS -->
+    {{ script("/static/js/voca.min.js") }}
+    {{ script("/static/js/jquery.min.js") }}
+    <!--{{ script("/static/tabler/libs/jquery/dist/jquery.slim.min.js") }}-->
+    {{ script("/static/js/bootstrap.bundle.min.js") }}
+    <!--{{ script("/static/tabler/libs/bootstrap/dist/js/bootstrap.bundle.min.js") }}-->
+    {{ script("/static/js/datatables.min.js") }}
+    {{ script("/static/js/datatables-rowreorder.min.js") }}
+    {{ script("/static/js/datatables-extension.js") }}
+    {{ script("/static/js/bootstrap-select.min.js") }}
+    {{ script("/static/js/fileinput.min.js") }}
+    {{ script("/static/js/fileinput-theme.js") }}
+    {{ script("/static/js/validator.min.js") }}
+    {{ script("/static/js/clipboard.min.js") }}
+    {{ script("/static/js/bootbox.min.js") }}
+    {{ script("/static/js/md5.min.js") }}
+    {{ script("/static/js/mermaid.min.js") }}
+    {{ script("/static/tabler/libs/apexcharts/dist/apexcharts.min.js") }}
+    {{ script("/static/tabler/libs/jqvmap/dist/jquery.vmap.min.js") }}
+    {{ script("/static/tabler/libs/jqvmap/dist/maps/jquery.vmap.world.js") }}
+    {{ script("/static/tabler/libs/jqvmap/dist/maps/jquery.vmap.usa.js") }}
+    {{ script("/static/tabler/libs/jqvmap/dist/maps/continents/jquery.vmap.europe.js") }}
+    {{ script("/static/tabler/libs/autosize/dist/autosize.min.js") }}
+    {{ script("/static/tabler/libs/peity/jquery.peity.min.js") }}
+    {{ script("/static/tabler/libs/flatpickr/dist/flatpickr.min.js") }}
+    {{ script("/static/tabler/libs/nouislider/distribute/nouislider.min.js") }}
+    <!-- Tabler Core -->
+    {{ script("/static/tabler/js/tabler.min.js") }}
+    {{ script("/static/js/custom.js") }}
+
+    {% block script %} {% endblock %}
+    <script>
+        function get_name_index(div, i) {
+            i = i || 0;
+            var name = div.attr('name');
+            var matches = [... name.matchAll(/\[(\d+)\]/g)];
+            return parseInt(matches[i][1]);
+        }
+
+        function set_name_index(root, name, old_index, new_index) {
+            var div = $('[name="' + v.sprintf(name, old_index) + '"]', root);
+            div.attr('name', v.sprintf(name, new_index));
+        }
+
+        function codec_desc(codec) {
+            if (codec.includes('264'))
+                return 'H.264';
+            else if (codec.includes('265') || codec.includes('hevc'))
+                return 'H.265';
+            else if (codec.includes('mpeg2'))
+                return 'MPEG2';
+            else if (codec.includes('aac'))
+                return 'AAC';
+            else if (codec.includes('mp3'))
+                return 'MP3';
+            else if (codec.includes('mp2'))
+                return 'MP2';
+
+            return codec.toUpperCase();
+        }
+
+        function flash_message(message, category, timeout) {
+            category = category || 'danger';
+            timeout = timeout || 5000;
+            var id = Math.random().toString(36).substring(7);
+
+            $('.content > .container > .alert').each(function () {
+                $(this).remove();
+            });
+
+            $(v.sprintf('<div id="%s" class="alert alert-%s alert-dismissable" style="position: absolute; width: 80%%; z-index: 1000; display: none">' +
+                        '  <span class="fa fa-exclamation-circle" style="vertical-align: top; padding-top: 0.25rem; margin-right: 0.25rem"></span>' +
+                        '    <div style="white-space: pre; display: inline-block">%s</div>' +
+                        '  <a href="#" class="close" data-dismiss="alert" style="float: right;">&times;</a>' +
+                        '</div>', id, category, message.trim().split('\n').join('<br/>')
+            )).prependTo('.content > .container').slideDown();
+
+            setTimeout(function () {
+                $(v.sprintf('#%s', id)).slideUp(400, function () {
+                    $(this).remove();
+                });
+            }, timeout);
+        }
+
+        function validator_message(div, error) {
+            var form_group = div.closest('.form-group');
+            var id = Math.random().toString(36).substring(7);
+            var target = $('.help-block.with-errors', form_group);
+            $('<ul id="' + id + '" class="list-unstyled"><li>' + error + '</li></ul>').prependTo(target).fadeIn();
+            setTimeout(function () {
+                $(v.sprintf('#%s', id)).fadeOut(400, function () {
+                    $(this).remove();
+                });
+            }, 5000);
+        }
+
+        function get_color_from_string(string) {
+            var predefined_colors = {{ predefined_colors|safe }};
+
+            if (string in predefined_colors)
+                return predefined_colors[string];
+
+            var result = md5(string, null, true);
+            var rgb = [0, 0, 0];
+
+            for (var index = 0; index < result.length; index++) {
+                rgb[index % 3] = result.charCodeAt(index);
+            }
+
+            var r = 112 + (rgb[0] % 64) * 2;
+            var g = 112 + (rgb[1] % 64) * 2;
+            var b = 112 + (rgb[2] % 64) * 2;
+            return v.sprintf('background: #%02X%02X%02X;', r, g, b)
+        }
+
+        function colorful_label(label) {
+            quote = (typeof quote !== 'undefined') ?  quote : '"';
+            if (!label)
+                return '';
+
+            return '<div class=' + quote + 'badge' + quote + ' style=' + quote + get_color_from_string(label) + quote + '>' + label + '</div>'
+        }
+
+        function struptime(seconds) {
+            var minutes = parseInt(seconds / 60);
+            seconds %= 60;
+            var hours = parseInt(minutes / 60);
+            minutes %= 60;
+            var days = parseInt(hours / 24);
+            hours %= 24;
+
+            if (days > 1)
+                return v.sprintf('%d days, %02d:%02d:%02d', days, hours, minutes, seconds);
+            else if (days > 0)
+                return v.sprintf('%d day, %02d:%02d:%02d', days, hours, minutes, seconds);
+            else
+                return v.sprintf('%02d:%02d:%02d', hours, minutes, seconds);
+        }
+
+        function confirm_box(message, callback) {
+            bootbox.dialog({
+                message: message,
+                closeButton: false,
+                onEscape: true,
+                centerVertical: true,
+                className: 'modal-blur',
+                buttons: {
+                    cancel: {
+                        label: 'Cancel',
+                        className: 'btn btn-secondary',
+                        callback: function () {
+                            $(this).fadeOut();
+                        }
+                    },
+                    confirm: {
+                        label: 'Confirm',
+                        className: 'btn btn-danger',
+                        callback: callback
+                    }
+                }
+            });
+
+        }
+
+        function selectpicker_toggle(name, on) {
+            var selectpicker = $(v.sprintf('[name="%s"]', name));
+            var form_group = selectpicker.closest('.form-group.row');
+
+            if (on) {
+                form_group.slideDown();
+                selectpicker.prop('disabled', false);
+            } else {
+                form_group.slideUp();
+                selectpicker.prop('disabled', true);
+            }
+
+            selectpicker.selectpicker('refresh');
+        }
+
+        function selectpicker_options_toggle(names, defaults) {
+            defaults = typeof defaults === 'undefined' ? [] : defaults;
+            var values = [];
+            var i;
+            var nb_options = 0;
+
+            function is_equal(a0, b0) {
+                var a = (Array.isArray(a0) ? a0 : [a0]).map(String);
+                var b = (Array.isArray(b0) ? b0 : [b0]).map(String);
+                var ret = true;
+
+                for (var i = 0; i < b.length; i++) {
+                    if (!a.includes(b[i])) {
+                        ret = false;
+                        break
+                    }
+                }
+
+                return ret;
+            }
+
+            for (i = 0; i < names.length; i++) {
+                values.push($(v.sprintf('[name="%s"]', names[i])).val());
+            }
+
+            $(this).find('option:not(.bs-title-option)').each(function () {
+                var enable = true;
+                for (i = 0; i < names.length; i++) {
+                    var key = names[i].replace(/(\.|_)/g, '-');
+                    if ((!$(this).html() || $(this).data(key)) && !is_equal($(this).data(key) || values[i], values[i])) {
+                        enable = false;
+                        break
+                    }
+                }
+
+                if (enable) {
+                    nb_options++;
+                    $(this).css('display', '');
+                    $(this).prop('disabled', false);
+                } else {
+                    $(this).css('display', 'none');
+                    $(this).prop('disabled', true);
+                }
+            });
+
+            if (nb_options > 0) {
+                var selected = $(this).find('option:selected');
+                for (i = 0; i < names.length; i++) {
+                    if (!is_equal(selected.data(names[i].replace(/(\.|_)/g, '-')) || values[i], values[i])) {
+                        var option = null;
+                        for (var j = 0; j < defaults.length; j++) {
+                            var option0 = $(this).find(v.sprintf('option[value="%s"]:not(:disabled)', defaults[j])).first();
+                            if (option0.length > 0) {
+                                option = option0;
+                                break;
+                            }
+                        }
+
+                        if (!option)
+                            option = $(this).find('option:not(:disabled)').first();
+
+                        option.prop('selected', true);
+                        break
+                    }
+                }
+                $(this).closest('.form-group.row').slideDown();
+            } else {
+                $(this).closest('.form-group.row').slideUp();
+            }
+
+            $(this).selectpicker('refresh');
+        }
+
+        function net_speed_desc(s) {
+            var desc = ['Kbit/s', 'Mbit/s', 'Gbit/s'];
+            var kbps = Math.floor(parseInt(s) / Math.pow(10, 3));
+            var i = 0;
+            var speed = 0;
+
+            if (kbps > 0) {
+                i = Math.min(Math.floor(Math.log10(kbps) / 3), desc.length - 1);
+                speed = kbps / Math.pow(10, i * 3);
+            }
+
+            if (speed >= 100)
+                return v.sprintf('%4d %s', speed, desc[i]);
+            else if (speed >= 10)
+                return v.sprintf('%4.1f %s', speed, desc[i]);
+
+            return v.sprintf('%4.2f %s', speed, desc[i]);
+        }
+
+        function filesize(bytes) {
+            if(bytes === 0) return '-';
+
+            var k = 1024,
+                dm = 3,
+                sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'],
+                i = Math.floor(Math.log(bytes) / Math.log(k));
+
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm).slice(0, 4)) + ' ' + sizes[i];
+        }
+
+        function generate_password(length) {
+            var charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+            var buf = '';
+
+            for (var i = 0; i < length; ++i) {
+                buf += charset.charAt(Math.floor(Math.random() * charset.length));
+            }
+
+            return buf;
+        }
+        
+        function element_update(el, value) {
+            if (el && el.getAttribute('data-raw-value') !== value) {
+                if (typeof value === 'string' && value.includes('<') && value.includes('>'))
+                    el.innerHTML = value;
+                else
+                    el.textContent = value;
+
+                el.setAttribute('data-raw-value', value);
+            }
+        }
+
+        function isElementInViewport (el) {
+            // Special bonus for those using jQuery
+            if (typeof jQuery === "function" && el instanceof jQuery) {
+                el = el[0];
+            }
+
+            var rect = el.getBoundingClientRect();
+
+            return (
+                rect.top >= 0 &&
+                rect.left >= 0 &&
+                rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) && /* or $(window).height() */
+                rect.right <= (window.innerWidth || document.documentElement.clientWidth) /* or $(window).width() */
+            );
+        }
+
+        function mermaid_editor(input, container, root, data) {
+            var graph = {};
+            var last_node = null;
+            var root_node = $(root).val();
+
+            function render_callback(svg, func) {
+                container.html(svg);
+            }
+
+            function mermaid_graph_load() {
+                try {
+                    graph = JSON.parse(input.val());
+                } catch(e) {
+                }
+
+                graph = JSON.parse(input.val());
+                for (var key in graph) {
+                    if (!(key in data))
+                        graph[key] = null;
+                }
+
+                for(var key in data) {
+                    if (!(key in graph)) {
+                        graph[key] = null;
+                    }
+                }
+            }
+
+            function mermaid_graph_dump() {
+                var parent = [$(root).val()], child = [];
+                var result = {};
+
+                while (parent.length > 0) {
+                    for (var i = 0; i < parent.length; i++) {
+                        for (var key in graph) {
+                            if (graph[key] === parent[i]) {
+                                child.push(key);
+                                result[key] = graph[key];
+                            }
+                        }
+                    }
+
+                    parent = child;
+                    child = [];
+                }
+
+                input.val(JSON.stringify(result));
+            }
+
+            function mermaid_graph_render() {
+                var array = ['graph LR'];
+                var last = null;
+                var n = 1;
+                var nb_links = 0;
+
+                for (var key in graph) {
+                    var value = graph[key];
+
+                    if (!data[key])
+                        continue;
+
+                    if (value && data[value]) {
+                        array.push(value + '(' + data[value] + ')' + ' -- x --> ' + key + '(' + data[key] +')');
+                        nb_links++;
+                    } else {
+                        if ($.map(graph, function (v, k) {return v;}).includes(key)) {
+                            continue;
+                        }
+
+                        if (last) {
+                            array.push(last + '(' + data[last] + ')' + ' -.-> ' + key + '(' + data[key] + ')');
+                            array.push('linkStyle ' + nb_links + ' display: none;');
+                            nb_links++;
+                        } else {
+                            array.push(key + '(' + data[key] + ')');
+                        }
+
+                        last = n++ % 5 ? key : null;
+                    }
+                }
+
+                mermaid_graph_dump();
+                mermaid.render('mermaid-inner', array.join('; '), render_callback);
+                $('.mermaid g.node').css({'cursor': 'pointer'}).on('click', mermaid_node_connect);
+                $('.mermaid span.edgeLabel').css({'cursor': 'pointer'}).on('click', mermaid_link_delete);
+            }
+
+            function find_path(e) {
+                var paths = $('.mermaid .edgePaths .edgePath .path');
+
+                for (var i = 0; i < paths.length; i++) {
+                    var rect = paths[i].getBoundingClientRect();
+                    var left = window.pageXOffset + rect.x;
+                    var right = window.pageXOffset + rect.x + rect.width;
+                    var top = window.pageYOffset + rect.y;
+                    var bottom = window.pageYOffset + rect.y + rect.height;
+
+                    if (e.pageX + 10 >= left && e.pageX <= right + 10 &&
+                        e.pageY + 10 >= top && e.pageY <= bottom + 10) {
+                        return paths[i];
+                    }
+                }
+
+            }
+
+            function find_endpoint(path) {
+                var points = $(path).attr('d').split(/[MLHVZ]/).filter(function (e) {return e;});
+                var start = points[0].split(',').map(parseFloat);
+                var end = points[points.length - 1].split(',').map(parseFloat);
+                var div = $('#mermaid-inner');
+                var viewbox = $(div).attr('viewBox').split(/\s+/).map(parseFloat);
+                var offset = div.offset();
+
+                start[0] = offset.left + (start[0] / viewbox[2]) * div.width() - viewbox[0];
+                start[1] = offset.top + (start[1] / viewbox[3]) * div.height() - viewbox[1];
+                end[0] = offset.left + (end[0] / viewbox[2]) * div.width() - viewbox[0];
+                end[1] = offset.top + (end[1] / viewbox[3]) * div.height() - viewbox[1];
+                return [start, end];
+            }
+
+            function find_node(point) {
+                var nodes = $('.mermaid .nodes .node');
+
+                for (var i = 0; i < nodes.length; i++) {
+                    var rect = nodes[i].getBoundingClientRect();
+                    var left = window.pageXOffset + rect.x;
+                    var right = window.pageXOffset + rect.x + rect.width;
+                    var top = window.pageYOffset + rect.y;
+                    var bottom = window.pageYOffset + rect.y + rect.height;
+
+                    if (point[0] + 10 >= left && point[0] <= right + 10 &&
+                        point[1] + 10 >= top && point[1] <= bottom + 10) {
+                        return $(nodes[i]).attr('id');
+                    }
+                }
+
+            }
+
+            function mermaid_link_delete(e) {
+                var path = find_path(e);
+                var points = find_endpoint(path);
+
+                var from = find_node(points[0]);
+                var to = find_node(points[1]);
+
+                if (to in graph)
+                    graph[to] = null;
+
+                mermaid_graph_render();
+            }
+
+            function mermaid_node_connect() {
+                var node = $(this).attr('id');
+                var parent = last_node;
+
+                while (parent) {
+                    if (node === graph[parent])
+                        return;
+
+                    parent = graph[parent];
+                }
+
+                if (last_node === node) {
+                    last_node = null;
+                    $(this).children('rect').css('opacity', 1);
+                } else if (last_node !== null) {
+                    if (!(node in graph) || !graph[node]) {
+                        graph[node] = last_node;
+                        last_node = null;
+                        mermaid_graph_render();
+                        $(last_node).children('rect').css('opacity', 1);
+                    }
+                } else {
+                    last_node = node;
+                    $(this).children('rect').css('opacity', 0.5);
+                }
+            }
+
+            mermaid.initialize({
+                theme: 'dark',
+                startOnLoad: false,
+                securityLevel: 'loose',
+                flowchart: {
+                    useMaxWidth: true,
+                    htmlLabels: true
+                }
+            });
+
+            root.on('change', function () {
+                var node = $(root).val();
+                var parent = graph[node];
+
+                for (var key in graph) {
+                    if (graph[key] === root_node) {
+                        graph[key] = node;
+                    } else if (graph[key] === node) {
+                        graph[key] = root_node;
+                    }
+                }
+
+                graph[node] = null;
+                graph[root_node] = parent === root_node ? node : parent;
+
+                root_node = node;
+                mermaid_graph_render();
+            });
+
+            mermaid_graph_load();
+            mermaid_graph_render();
+        }
+    </script>
+  </head>
+  <body class="antialiased theme-{{ current_user.theme }}">
+    <aside class="navbar navbar-vertical navbar-expand-lg navbar-dark">
+      <div class="container">
+        <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbar-menu">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <a href="https://www.xaccel-codec.com" class="navbar-brand navbar-brand-autodark font-weight-light">
+          <!--<img src="#" alt="X Acceleration Codec" class="navbar-brand-image">-->
+          X Acceleration Codec
+        </a>
+        <div class="collapse navbar-collapse" id="navbar-menu">
+          <ul class="navbar-nav pt-lg-3">
+            {% macro menu(name, icon) %}
+              <li class="nav-item dropdown">
+                <a class="nav-link dropdown-toggle" href="#navbar-base" data-toggle="dropdown" role="button" aria-expanded="false" >
+                  &nbsp;
+                  <span class="{{ icon }}"></span>
+                  <span class="nav-link-title">&nbsp;&nbsp;&nbsp;{{ name }}</span>
+                </a>
+                <ul class="dropdown-menu dropdown-menu-columns dropdown-menu-columns-2">
+                  {{ caller() }}
+                </ul>
+              </li>
+            {% endmacro %}
+
+            {% macro item(name, href='#', class='') %}
+              <li><a class="dropdown-item  {{ class }}" href="{{ href }}" {{ kwargs_options(**kwargs) }}>{{ name }}</a></li>
+            {% endmacro %}
+
+            {% if current_user.role == 'administrator' %}
+              {% call menu('System', icon='fa fa-sm fa-home') %}
+                {{ item('Overview', href=url_for('system.overview')) }}
+                {{ item('Log', href=url_for('log.log')) }}
+                {{ item('Connections', href=url_for('system.connection')) }}
+              {% endcall %}
+
+              {% call menu('Server', icon='fa fa-sm fa-server') %}
+                {{ item('Manage Servers', href=url_for('server.manage')) }}
+                {{ item('Add Server', href=url_for('server.add')) }}
+              {% endcall %}
+
+              {% call menu('Stream', icon='fa fa-sm fa-stream') %}
+                {{ item('Manage Streams', href=url_for('stream.manage')) }}
+                {{ item('Add Stream', href=url_for('stream.add')) }}
+              {% endcall %}
+
+              {% call menu('Profile', icon='fa fa-sm fa-cogs') %}
+                {{ item('Manage Profiles', href=url_for('profile.manage')) }}
+                {{ item('Add Profile', href=url_for('profile.add')) }}
+              {% endcall %}
+
+              {% call menu('DVB', icon='fa fa-sm fa-satellite-dish') %}
+                {{ item('Manage Adapters', href=url_for('adapter.manage')) }}
+                {{ item('Add Adapter', href=url_for('adapter.add')) }}
+              {% endcall %}
+
+              {% call menu('CAM', icon='fa fa-sm fa-fingerprint') %}
+                {{ item('Manage SoftCAMs', href=url_for('softcam.manage')) }}
+                {{ item('Add SoftCAM', href=url_for('softcam.add')) }}
+              {% endcall %}
+
+              {% call menu('VOD', icon='fa fa-sm fa-film') %}
+                {{ item('Manage Movies', href=url_for('movie.manage')) }}
+                {{ item('Add Movie', href=url_for('movie.add'), class='mb-1') }}
+                {{ item('Manage Series', href=url_for('series.manage')) }}
+                {{ item('Add Series', href=url_for('series.add')) }}
+              {% endcall %}
+
+              {% call menu('Proxy', icon='fa fa-sm fa-network-wired') %}
+                {{ item('Manage Proxies', href=url_for('proxy.manage')) }}
+                {{ item('Add Proxy', href=url_for('proxy.add')) }}
+              {% endcall %}
+
+              {% call menu('Category', icon='fa fa-sm fa-th') %}
+                {{ item('Manage Categories', href=url_for('category.manage')) }}
+              {% endcall %}
+
+              {% call menu('Nginx', icon='fa fa-sm fa-list') %}
+                {{ item('Configure', href='/nginx/config') }}
+              {% endcall %}
+
+              {% call menu('File', icon='fa fa-sm fa-file') %}
+                {{ item('Manage Files', href=url_for('file.manage')) }}
+              {% endcall %}
+            {% endif %}
+
+            {% if current_user.role in ('administrator', 'reseller', 'subreseller') %}
+              {% call menu('User', icon='fa fa-sm fa-user') %}
+                {{ item('Manage Users', href=url_for('user.manage')) }}
+                {{ item('Add User', href=url_for('user.add')) }}
+              {% endcall %}
+            {% endif %}
+
+            {% if current_user.role == 'administrator' %}
+              {% call menu('Bouquet', icon='fa fa-sm fa-list-ul') %}
+                {{ item('Manage Bouquets', href=url_for('bouquet.manage')) }}
+                {{ item('Add Bouquet', href=url_for('bouquet.add')) }}
+              {% endcall %}
+
+              {% call menu('Package', icon='fad fa-box-alt') %}
+                {{ item('Manage Packages', href=url_for('package.manage')) }}
+                {{ item('Add Package', href=url_for('package.add')) }}
+              {% endcall %}
+            {% endif %}
+
+            {% if current_user.role in ('administrator', 'reseller') %}
+              {% call menu('Account', icon='fa fa-sm fa-user-tie') %}
+                {{ item('Manage Accounts', href=url_for('account.manage')) }}
+                {{ item('Add Account', href=url_for('account.add')) }}
+              {% endcall %}
+            {% endif %}
+
+            {% if current_user.role == 'administrator' %}
+              {% call menu('Tools', icon='fa fa-sm fa-tools') %}
+                {{ item('Benchmark', href=url_for('tool.benchmark')) }}
+                {{ item('Proxy Import', href='#modal-proxy-import', **{'data-toggle': 'modal'}) }}
+                {{ item('Stream Import', href='#modal-stream-import', **{'data-toggle': 'modal'}) }}
+                {{ item('Stream Mass Editor', href=url_for('tool.stream_mass_editor')) }}
+              {% endcall %}
+
+              {% call menu('Settings', icon='fa fa-sm fa-cog') %}
+                {{ item('System Settings', href=url_for('system.settings')) }}
+                {{ item('Database Settings', href=url_for('database.settings')) }}
+              {% endcall %}
+            {% endif %}
+          </ul>
+        </div>
+      </div>
+    </aside>
+    <div class="page">
+      <header class="navbar navbar-expand-md navbar-light">
+        <div class="row pl-1 pr-1 w-100">
+          <div class="show text-azure text-center col-10 pt-3"
+               style="font-family: monospace; font-weight: 600; font-size: 0.8rem">
+            {% if current_user.role == 'administrator' %}
+              {% set s = get_system_stats() %}
+              Streams:
+              <span class="text-success pl-md-1" id="stream-running">{{ s.stream_running }}</span>/<span class="text-primary pr-md-4" id="stream-total">{{ s.stream_total }}</span>
+
+              Users:
+              <span class="text-success pl-md-1" id="user-online">{{ s.user_online }}</span>/<span class="text-primary pr-md-4" id="user-total">{{ s.user_total }}</span>
+
+              Connections:
+              <span class="text-success pl-md-1 pr-md-4" id="connections">{{ s.connections }}</span>
+
+              Network:
+              <span class="text-success pl-md-1 pr-md-4">
+              <span id="network-upload" style="white-space: pre">{{ net_speed_desc(s.network_upload) }}</span>
+              <i class="fa fa-long-arrow-up"></i>
+            </span>
+              <span class="text-primary pr-md-4">
+              <span id="network-download" style="white-space: pre">{{ net_speed_desc(s.network_download) }}</span>
+              <i class="fa fa-long-arrow-down"></i>
+            </span>
+
+              <script>
+                  function system_stats_update() {
+                      $.ajax({
+                          url: '{{ url_for('system.stats') }}',
+                          success: function (stats) {
+                              $('#stream-running').html(stats.stream_running);
+                              $('#stream-total').html(stats.stream_total);
+                              $('#user-online').html(stats.user_online);
+                              $('#user-total').html(stats.user_total);
+                              $('#network-upload').html(net_speed_desc(stats.network_upload));
+                              $('#network-download').html(net_speed_desc(stats.network_download));
+                              $('#connections').html(stats.connections);
+                          },
+                          complete: function (result) {
+                              setTimeout(function () {
+                                  system_stats_update();
+                              }, 500);
+                          }
+                      });
+                  }
+
+                  system_stats_update();
+              </script>
+            {% endif %}
+          </div>
+        <div class="col-2">
+          <div class="navbar-nav float-right">
+            <div class="nav-item dropdown d-none d-flex mr-3" id="notification-dropdown">
+              <button class="btn btn-link text-gray-dark" data-toggle="dropdown" tabindex="-1">
+                <i class="far fa-bell"></i>
+                <span id="notification-indicator"></span>
+              </button>
+
+              <div class="dropdown-menu dropdown-menu-md-right dropdown-menu-card dropdown-menu-arrow">
+                <div class="card">
+                  <div class="card-header">
+                    <h6 class="card-title font-weight-light">Notifications</h6>
+                    <div class="badge badge-pill bg-info ml-1" id="notification-count">0</div>
+                  </div>
+                  <div class="list list-row list-hoverable" id="notification-list" style="width: 50ch; height: 50ch; overflow: scroll">
+                  </div>
+                </div>
+              </div>
+            </div>
+            <script>
+                var nb_notifications = 0;
+                var notification_showing = false;
+                var last_server_log = '';
+
+                $('#notification-dropdown').on('hidden.bs.dropdown', function () {
+                    $('#notification-list > .list-item').remove();
+                    $('#notification-indicator').attr('class', '');
+                    $('#notification-count').html('0');
+                    nb_notifications = 0;
+                    notification_showing = false;
+                }).on('shown.bs.dropdown', function () {
+                    notification_showing = true;
+
+                    $.ajax({
+                        url: '/server/log-after/' + last_server_log,
+                        method: 'POST'
+                    })
+                });
+
+                function server_log_update() {
+                    if (notification_showing)
+                        return;
+
+                    $.ajax({
+                        url: '/server/log-after/' + last_server_log,
+                        dataType: 'json',
+                        success: function (result) {
+                            $.each(result, function () {
+                                var icon = '<i class="fa fa-info-circle text-info"></i>';
+                                if (this.level === 'CRITICAL' || this.level === 'ERROR') {
+                                    icon = '<i class="fa fa-exclamation-triangle text-danger"></i>';
+                                } else if (this.level === 'WARNING') {
+                                    icon = '<i class="fa fa-exclamation-triangle text-warning"></i>';
+                                }
+
+                                var server = colorful_label(this.server);
+
+                                $(
+                                    '<div class="list-item">' +
+                                    '  <div>' + icon + '</div>' +
+                                    '  <div class="text-truncate">' +
+                                    '    <a href="#" class="text-body d-block">' + server + '</a>' +
+                                    '    <small class="d-block text-muted text-truncate mt-n1" style="white-space: pre">' + this.message +'</small>' +
+                                    '  </div>' +
+                                    '</div>'
+                                ).appendTo('#notification-list');
+
+                                $('#notification-indicator').attr('class', 'badge bg-red');
+                                nb_notifications += 1;
+                                last_server_log = this.id;
+                            });
+
+                            $('#notification-count').html(nb_notifications);
+                        },
+                        complete: function (result) {
+                            setTimeout(function () {
+                                server_log_update();
+                            }, 1000);
+                        }
+                    });
+                }
+
+                server_log_update();
+            </script>
+
+            <div class="nav-item dropdown">
+              <a href="{{ url_for('account.settings', account=current_user) }}" class="nav-link d-flex lh-1 text-reset p-0" data-toggle="dropdown" aria-expanded="false">
+                <span class="avatar">
+                  <span class="fa fa-user"></span>
+                </span>
+
+                <div class="d-none d-xl-block pl-2">
+                  <div>{{ current_user.username }}</div>
+                  <div class="mt-1 small text-muted">
+                    {{ current_user.role|capitalize }}
+                    {% if current_user.role in ('reseller', 'subreseller') %}
+                      / {{ 'Credits: %d'|format(current_user.credits) }}
+                    {% endif %}
+                  </div>
+                </div>
+              </a>
+              <div class="dropdown-menu dropdown-menu-right dropdown-menu-arrow">
+                <a class="dropdown-item" href="{{ url_for('account.settings', account=current_user) }}"><i class="fal fa-cog"></i>&nbsp;&nbsp;Settings</a>
+                <a class="dropdown-item" href="{{ url_for('account.logout') }}"><i class="fal fa-sign-out"></i>&nbsp;&nbsp;Logout</a>
+              </div>
+            </div>
+          </div>
+        </div>
+
+
+        </div>
+      </header>
+      <div class="content">
+        <div class="container" style="max-width: 100%">
+          {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+              <div>
+                {% for category, message in set(messages) %}
+                  {{ alert(message, category) }}
+                {% endfor %}
+              </div>
+            {% endif %}
+          {% endwith %}
+
+          {% block content %} {% endblock %}
+
+          {{ file_upload_modal('modal-proxy-import', url_for('tool.proxy_import'), title='Proxy Import From File', extensions=['txt'], reload_on_uploaded=True) }}
+          {{ file_upload_modal('modal-stream-import', url_for('tool.stream_import'), title='Stream Import From M3U / Xtream / XUI Backup', extensions=['m3u', 'm3u8', 'json', 'zip', 'sql'], reload_on_uploaded=True) }}
+        </div>
+
+        <div class="footer footer-transparent pt-0">
+          <div class="container">
+            <div class="row text-center align-items-center flex-row-reverse">
+              <div class="col-lg-auto ml-lg-auto">
+                <ul class="list-inline list-inline-dots mb-0">
+                  <li class="list-inline-item"><a href="#" class="link-secondary">v{{ config.VERSION }}</a></li>
+                  <li class="list-inline-item"><a href="{{ url_for('system.changelog') }}" class="link-secondary">Changelog</a></li>
+                </ul>
+              </div>
+              <div class="col-12 col-lg-auto mt-3 mt-lg-0">
+                Copyright © 2024
+                <a href="https://www.xaccel-codec.com" class="link-secondary">X Acceleration Codec</a>.
+                All rights reserved.
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+    <script>
+        /* open the collapsed parents for display the validator message. */
+        $('form[data-toggle="validator"]').each(function () {
+            $(this).find($.fn.validator.Constructor.INPUT_SELECTOR).each(function () {
+                $(this).on('invalid.bs.validator', function () {
+                    $(this).parents('.collapse').collapse('show');
+                });
+            });
+        });
+
+        /* Initialize tooltip, must put at end of page */
+        $('body').tooltip({
+            selector: '[data-toggle="tooltip"]',
+            container: '.content > .container',
+            placement: 'bottom',
+            html: true
+        });
+
+        $(function () {
+            $('[data-toggle="confirmation"]').on('click', function (e, confirm) {
+                confirm = typeof(confirm) === 'undefined' ? false : confirm;
+
+                e.stopPropagation();
+                if (!confirm) {
+                    var target = $(this);
+                    var message = $(this).data('message');
+                    var result = null;
+
+                    try {
+                        result = eval(message);
+                    } catch (e) {
+                    }
+
+                    e.preventDefault();
+                    var dialog = bootbox.dialog({
+                        message: result ? result : message,
+                        closeButton: false,
+                        onEscape: true,
+                        centerVertical: true,
+                        className: 'modal-blur',
+                        buttons: {
+                            cancel: {
+                                label: 'Cancel',
+                                className: 'btn btn-secondary',
+                                callback: function () {
+                                    $(this).fadeOut();
+                                }
+                            },
+                            confirm: {
+                                label: 'Confirm',
+                                className: 'btn btn-danger',
+                                callback: function () {
+                                    target.trigger('click', true);
+                                }
+                            }
+                        }
+                    });
+                }
+            });
+
+            /* Prevent the click event propagation to the table child row */
+            $('table > tbody > tr > td .btn-link').each(function () {
+                $(this).on('click', function (event) {
+                    event.stopPropagation();
+                });
+            });
+        });
+
+        mermaid.initialize({
+            theme: 'dark',
+            startOnLoad: false,
+            flowchart: {
+                useMaxWidth: true,
+                htmlLabels: true
+            }
+        });
+
+        (new ClipboardJS('[data-clipboard-text], [data-clipboard-target]')).on('success', function(e) {
+            var target = $(e.trigger);
+
+            target.tooltip({
+                title: 'copied!',
+                trigger: 'manual',
+                placement: 'bottom'
+            }).tooltip('show');
+
+            setTimeout(function (e) {
+                var id = e.attr('aria-describedby');
+
+                if (id.startsWith('tooltip')) {
+                    $('#' + id).tooltip('hide');
+                } else {
+                    e.tooltip('hide')
+                }
+
+            }, 300, target);
+        });
+
+        $(function () {
+            elements = document.querySelectorAll('[data-toggle="autosize"]');
+            if (elements.length) {
+                elements.forEach(function (element) {
+                    autosize(element);
+                });
+            }
+        });
+
+        var myDefaultWhiteList = $.fn.selectpicker.Constructor.DEFAULTS.whiteList;
+        myDefaultWhiteList.input = ['type', 'style', 'placeholder', 'onkeydown', 'onclick'];
+        myDefaultWhiteList.button = ['onclick'];
+
+        /* fix the validator focus offset and submit button disabled problem. */
+        var input = $('[data-toggle="validator"]').find('input:first');
+        $.fn.validator.Constructor.FOCUS_OFFSET = input.length > 0 ? input.offset().top : 0;
+        $.fn.validator.Constructor.INPUT_SELECTOR = ':input:not(:disabled, [type="hidden"], [type="submit"], [type="reset"], button)';
+        $.fn.validator.Constructor.DEFAULTS = {
+            delay: 500,
+            html: false,
+            disable: false,
+            focus: true,
+            custom: {},
+            errors: {
+                match: 'Does not match',
+                minlength: 'Not long enough'
+            },
+            feedback: {
+                success: 'fa-check-circle',
+                error: 'fa-times'
+            }
+        };
+
+        /* uncheck supports for radio options. */
+        $('input[type="radio"]').on('click', function () {
+            var name = $(this).attr('name');
+
+            if ($(this).data('checked')) {
+                $(this).prop('checked', false);
+                $(this).data('checked', false)
+            } else {
+                $('input[type="radio"][name="' +name + '"]').each(function () {
+                    $(this).data('checked', false);
+                });
+
+                $(this).data('checked', true)
+            }
+        });
+    </script>
+  </body>
+</html>

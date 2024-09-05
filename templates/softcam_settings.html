@@ -1,0 +1,49 @@
+{% extends "layout.html" %}
+{% from "bootstrap.html" import panel, form, form_group, input, float_group, float_label, select, select_option with context %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+  {% call panel(title=title) %}
+    {% call form(request.path, '/softcam/manage') %}
+      {% call(id, name) form_group(name='name', label='Name') %}
+        {{ input(id, name, get_json_conf(name), 'required') }}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='protocol', label='Protocol') %}
+        {% call(name) select(id, name, default='NEWCAMD') %}
+          {{ select_option('CS378X', get_json_conf(name), label='CS378X') }}
+          {{ select_option('NEWCAMD', get_json_conf(name), label='NEWCAMD') }}
+        {% endcall %}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='server', label='Server') %}
+        {{ input(id, name, get_json_conf(name)) }}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='port', label='Port') %}
+        {{ input(id, name, get_json_conf(name), type='number', min=0, max=65535) }}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='username', label='Username') %}
+        {{ input(id, name, get_json_conf(name)) }}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='password', label='Password') %}
+        {{ input(id, name, get_json_conf(name)) }}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='caid', label='CAID',
+                                   tooltip='Normally we write the CAID in hexadecimal format for the '
+                                           'convenience. Please don\'t forget the \'0x\' prefix if you '
+                                           'fill it in hexadecimal format. ') %}
+        {% set caid = get_json_conf(name) %}
+        {{ input(id, name, '0x%04x'|format(caid) if caid else caid, pattern='((0x)?[a-fA-F0-9]+)') }}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='des_key', label='DES Key') %}
+        {{ input(id, name, get_json_conf(name), minlength=28, maxlength=30, placeholder='0x0102030405060708091011121314') }}
+      {% endcall %}
+    {% endcall %}
+  {% endcall %}
+{% endblock %}

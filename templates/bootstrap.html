@@ -1,0 +1,1523 @@
+{% macro varargs_options() -%}
+  {% set options = [] %}
+
+  {% for arg in varargs %}
+    {% do options.append('%s'|format(arg)) %}
+  {% endfor %}
+
+  {{ options|join(' ') }}
+{%- endmacro %}
+
+
+{% macro kwargs_options() -%}
+  {% set options = [] %}
+
+  {% for key in kwargs %}
+    {% if key.startswith('data-') %}
+      {% set val = kwargs[key] %}
+      {% do options.append('%s=\'%s\''|safe|format(key|replace('.', '-')|replace('_', '-'), val|tojson if val is not string else val)) %}
+    {% else %}
+      {% do options.append('%s="%s"'|safe|format(key, kwargs[key])) %}
+    {% endif %}
+  {% endfor %}
+
+
+  {{ options|join(' ') }}
+{%- endmacro %}
+
+
+{% macro selector(name) -%}
+  '{{ "[name=\"%s\"]"|format(name)|safe }}'
+{%- endmacro %}
+
+
+{% macro join2() -%}
+  {% set r = [] %}
+  {% for x in varargs if x is not none %}
+    {% do r.append(x) %}
+  {% endfor %}
+
+  {{- r|join(kwargs.get('delimiter', '.'))|safe -}}
+{%- endmacro %}
+
+
+{% macro input_value(value, default=None) -%}
+  {% if value is not none and value|string -%}
+    value="{{ value }}"
+  {% elif default is not none %}
+    value="{{ default }}"
+  {%- endif %}
+{%- endmacro %}
+
+
+{% macro input(id, name, value) %}
+  {% do kwargs.setdefault('autocomplete', 'off') %}
+  {% do kwargs.setdefault('class', 'form-control') %}
+  {% set default = kwargs.pop('default') if kwargs.get('default') is not none else None %}
+  {% set id = unique_id() if id is none else id %}
+
+  <input id="{{ id }}" name="{{ name }}"
+    {{ kwargs_options(**kwargs) }}
+    {{ varargs_options(*varargs) }}
+    {{ input_value(value, default) }}/>
+{% endmacro %}
+
+
+{% macro checkbox(id, name, label) %}
+  <label class="form-check">
+    <input class="form-check-input" type="checkbox" id="{{ id }}" name="{{ name }}" value="yes"
+           {{ kwargs_options(**kwargs) }}
+           {{ varargs_options(*varargs) }}>
+    <span class="form-check-label">{{ label }}</span>
+  </label>
+{% endmacro %}
+
+
+{% macro textarea(id, name, value) %}
+  {% do kwargs.setdefault('autocomplete', 'off') %}
+  {% do kwargs.setdefault('class', 'form-control') %}
+  {% set default = kwargs.pop('default') if kwargs.get('default') else None %}
+  {% set id = unique_id() if id is none else id %}
+
+  <textarea id="{{ id }}" name="{{ name }}"
+            {{ kwargs_options(**kwargs) }}
+            {{ varargs_options(*varargs) }}>
+    {%- if value is not none and value|string -%}{{ value }}{%- elif default is not none -%}{{ default }}{%- endif -%}
+  </textarea>
+{% endmacro %}
+
+
+{% macro check_select_option(opt, val) -%}
+  {% if val is not none -%}
+    {% if val is iterable and val is not string %}
+      {% set values = [] %}
+      {% for x in val %}
+        {% do values.append(x|string) %}
+      {% endfor %}
+
+      {% if opt|string in values %}
+        selected
+      {% endif %}
+    {% elif opt|string == val|string %}
+      selected
+    {% endif %}
+  {%- endif %}
+{%- endmacro %}
+
+
+{% macro select_option(opt, val) -%}
+  {% set ns = namespace() %}
+  {% set label = kwargs.pop('label') if 'label' in kwargs else None %}
+  {% set tags = kwargs.pop('tags') if 'tags' in kwargs else [] %}
+  {% set class = kwargs.pop('class') if 'class' in kwargs else [] %}
+  {% set ns.selected = check_select_option(opt, val)  %}
+  {% set contents = [] %}
+
+  {# deselect the option if the data attributes do not match #}
+  {% for key in kwargs %}
+    {% if key.startswith('data-') %}
+      {% set data = get_json_conf(key.lstrip('data-'), default=None) %}
+      {% if data is not none and data not in (kwargs[key] if kwargs[key] is iterable else [kwargs[key]]) %}
+        {% set ns.selected = '' %}
+      {% endif %}
+    {% endif %}
+  {% endfor %}
+
+  {% if tags|length > 0 %}
+    {% if label is not none %}
+      {% do contents.append(label) %}
+    {% endif %}
+
+    {% for tag in tags %}
+      {% if tag is not none and tag.startswith('<button ') %}
+        {% do contents.append(tag) %}
+      {% else %}
+        {% do contents.append('<div class=\'badge\' style=\'%s\'>%s</div>'|safe|format(colorize(tag), tag)) %}
+      {% endif %}
+    {% endfor %}
+  {% elif label is none %}
+    {% set label = opt %}
+  {% endif %}
+
+  <option class="{{ class|join(' ') }}" value="{{ opt|safe }}"
+          {% if contents|length > 0 %}
+            data-content="{{ contents|join(' ') }}"
+          {% endif %}
+          {{ kwargs_options(**kwargs) }}
+          {{ varargs_options(*varargs) }}
+          {{ ns.selected }}>{{ label }}</option>
+
+{%- endmacro %}
+
+
+{% macro select_group(label) %}
+  <optgroup label="{{ label }}">
+    {{ caller() }}
+  </optgroup>
+{% endmacro %}
+
+
+{% macro select(id=None, name=None) %}
+  {% set default = kwargs.pop('default') if kwargs.get('default') else None %}
+  {% set container = kwargs.pop('data-container') if kwargs.get('data-container') else '.content > .container' %}
+  {% set class = kwargs.pop('class') if kwargs.get('class') else 'form-control selectpicker' %}
+  {% set id = unique_id() if id is none else id %}
+
+  <select class="{{ class }}" id="{{ id }}" name="{{ name }}"
+          data-container="{{ container }}"
+          {{ kwargs_options(**kwargs) }} {{ varargs_options(*varargs) }}>
+    <option value="_"></option>
+    {{ caller(name) }}
+  </select>
+
+  <script>
+      var select = $('#{{ id }}');
+
+  {% if 'multiple' in varargs %}
+      if (select.val().length === 0)
+  {% else %}
+      if (select.val() === '_' )
+  {% endif %}
+      {
+      {% if default is iterable and default is not string %}
+          var defaults = {{ default|safe }};
+          var option = null;
+          for (var i = 0; i < defaults.length; i++) {
+              var option0 = select.find(v.sprintf('option[value="%s"]:not(:disabled)', defaults[i])).first();
+              if (option0.length > 0) {
+                  option = option0;
+                  break;
+              }
+          }
+
+          if (!option)
+              option = select.find('option:not(:disabled)').first();
+
+          option.prop('selected', true);
+      {% elif default %}
+          select.selectpicker('val', '{{ default }}');
+      {% endif %}
+      }
+      select.find('option[value="_"]').remove();
+      select.selectpicker();
+      select.selectpicker('refresh');
+  </script>
+{% endmacro %}
+
+
+{% macro form_group(id=None, name=None, label='', tooltip=None, class='', hide=False, layout=(2, 2, 4, 4)) %}
+  {% set id = unique_id() if id is none else id %}
+  {% if tooltip is none %}
+    {% set tooltip = get_tooltip(name) %}
+  {% endif %}
+
+  <div class="form-group row" {% if hide %} style="display: none;" {% endif %} {{ kwargs_options(**kwargs) }}>
+    <div class="col-md-{{ layout[0] }}"></div>
+
+    <label class="col-md-{{ layout[1] }} form-label {{ class }}" for="{{ id }}">
+    {% if label %}
+      <div class="badge bg-primary">{{ label }}</div>
+    {% endif %}
+    </label>
+
+    <div class="col-md-{{ layout[2] }}">
+      {% if name is string and name.endswith('[]') %}
+        <input type="hidden" name="{{ name }}" value=""/>
+      {% endif %}
+
+      {{ caller(id, name) }}
+    </div>
+
+    <div class="col-md-{{ layout[3] }}">
+      <div class="row">
+        <div class="col-md-1">
+        {% if tooltip is not none %}
+          <span class="fa fa-question-circle" data-toggle="tooltip" title="{{ tooltip }}"></span>
+        {% endif %}
+        </div>
+        <div class="col-md-11">
+          <div class="help-block with-errors"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endmacro %}
+
+
+{% macro panel(title=none) %}
+  <div class="card">
+    {% if title is not none %}
+      <div class="card-header">
+        <h6 class="card-title">{{ title }}</h6>
+      </div>
+
+      <div class="card-body">
+        {{ caller() }}
+      </div>
+    {% else %}
+      {{ caller() }}
+    {% endif %}
+  </div>
+{% endmacro %}
+
+
+{% macro unique_id() -%}
+  {% set chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ' %}
+  {% for n in range(32) -%}
+    {{ chars|random }}
+  {%- endfor %}
+{%- endmacro %}
+
+
+{% macro collapse(label) %}
+  {% set id = unique_id() %}
+
+  {% call(id, name) form_group(id) %}
+    <button class="form-control btn btn-primary"
+            type="button" data-toggle="collapse"
+            data-target="#{{ id }}" aria-expanded="false"
+            aria-controls="{{ id }}">
+      {{ label }}
+    </button>
+  {% endcall %}
+
+  <div class="fade collapse" id="{{ id }}">
+    {{ caller() }}
+  </div>
+{% endmacro %}
+
+
+{% macro colorful_label(label, class='', tooltip='') -%}
+  {% if label != '' -%}
+    <div class="badge {{ class }}" style="{{ colorize(label) }}" {% if tooltip %} data-toggle="tooltip" title="{{ tooltip }}" {% endif %}>{{ label }}</div>
+  {%- endif %}
+{%- endmacro %}
+
+
+{% macro alert(message, category='danger', timeout=30000) %}
+  {% set id = unique_id() %}
+  {% set classes = ['primary', 'secondary', 'success', 'danger', 'warning', 'info'] %}
+
+  {% if category not in classes %}
+    {% set category = 'danger' %}
+  {% endif %}
+
+  <div id="{{ id }}" class="alert alert-{{ category }} alert-dismissable" role="alert">
+    <i class="fa fa-exclamation-circle"></i>
+    <div style="display: inline-grid; padding-left: 1ch">
+    {% for msg in message.split('\n') %}
+      <div>{{ msg }}</div>
+    {% endfor %}
+    </div>
+    <a href="#" class="close float-right" data-dismiss="alert" aria-label="close">&times;</a>
+  </div>
+
+  <script>
+      setTimeout(function () {
+          $('#{{ id }}').alert('close');
+      }, {{ timeout }});
+  </script>
+{% endmacro %}
+
+
+{% macro float_group() %}
+  <div class="input-group" style="width: 100%">
+    {{ caller() }}
+  </div>
+{% endmacro %}
+
+
+{% macro float_label(name=None, label=None, width=None) %}
+  {% set id = unique_id() %}
+
+  {# Solution for HTML form won't post the select field if no option selected #}
+  {% if name is string and name.endswith('[]') %}
+    <input type="hidden" name="{{ name }}" value=""/>
+  {% endif %}
+
+  <!--<span class="input-group-btn" style="width: 0"></span>-->
+  <div class="has-float-label" {% if width %} {{ 'style="width: %s;"'|format(width)|safe }} {% endif %}>
+    {{ caller(id, name) }}
+    <label for="{{ id }}" {% if width %} {{ 'style="margin-left: auto";'|safe }} {% endif %}>
+      {{ label }}
+    </label>
+  </div>
+{% endmacro %}
+
+
+{% macro form(url_for_post, url_for_cancel='', submit_label='Save', cancel_label='Cancel', save_actions=False) %}
+  {% set form_id = unique_id() %}
+
+  <form id="{{ form_id }}" class="form-horizontal" data-toggle="validator" action="{{ url_for_post }}" method="post">
+    {{ caller() }}
+
+    {% call(id, name) form_group(*varargs, **kwargs) %}
+      <div class="float-right">
+        <div class="btn-group">
+        {% if url_for_cancel %}
+          <a href="{{ url_for_cancel }}" class="btn btn-warning" style="width: 15ch">{{ cancel_label }}</a>
+        {% endif %}
+
+          <button class="btn btn-primary" type="submit" style="width: 12ch">{{ submit_label }}</button>
+        {% if save_actions %}
+          <button data-toggle="dropdown" type="button" class="btn btn-primary dropdown-toggle dropdown-toggle-split" aria-expanded="false"></button>
+          <div class="dropdown-menu dropdown-menu-right">
+            <a class="dropdown-item" href="#"><button class="btn btn-green" name="save_action" value="save_and_start">Save And Start</button></a>
+          {% if request.path.endswith('/settings') %}
+            <a class="dropdown-item" href="#"><button class="btn btn-info" name="save_action" value="save_without_restart">Save Without Restart</button></a>
+          {% endif %}
+          </div>
+        {% endif %}
+        </div>
+
+      </div>
+    {% endcall %}
+  </form>
+{% endmacro %}
+
+
+{% macro timer_selectpicker(name) %}
+  {% call() float_group() %}
+    {% call(id, name) float_label(name='%s.weekdays[]'|format(name), label='weekdays', width='40%') %}
+      {% call(name) select(id, name, 'multiple', title='\u00a0', **{'data-actions-box': true}) %}
+        {% for weekday in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] %}
+          {{ select_option(loop.index0, get_json_conf(name), label=weekday) }}
+        {% endfor %}
+      {% endcall %}
+    {% endcall %}
+
+    {% call(id, name) float_label(name='%s.hours[]'|format(name), label='hours', width='30%') %}
+      {% call(name) select(id, name, 'multiple', title='\u00a0', **{'data-actions-box': true}) %}
+        {% for hour in range(0, 24) %}
+          {{ select_option(loop.index0, get_json_conf(name), label=hour) }}
+        {% endfor %}
+      {% endcall %}
+    {% endcall %}
+
+    {% call(id, name) float_label(name='%s.minutes[]'|format(name), label='minutes', width='30%') %}
+      {% call(name) select(id, name, 'multiple', title='\u00a0', **{'data-actions-box': true}) %}
+        {% for minute in range(0, 60) %}
+          {{ select_option(loop.index0, get_json_conf(name), label=minute) }}
+        {% endfor %}
+      {% endcall %}
+    {% endcall %}
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro divider(label, offset=0, width=12, tooltip=None, show=False) %}
+  {% set id = unique_id() %}
+  <div class="row">
+    {% if offset > 0 %}
+      <div class="col-md-{{ offset }}"></div>
+    {% endif %}
+
+    <div class="col-md-{{ width }}">
+      <hr class="divider"/>
+      <a class="badge bg-info cursor-pointer divider-label" data-toggle="collapse" data-target="#{{ id }}">{{ label }}</a>
+    </div>
+
+    {% if offset + width == 8 %}
+      <div class="col-md-4">
+        {% if tooltip is not none %}
+          <span class="fa fa-question-circle" type="button" data-toggle="tooltip" title="{{ tooltip }}"></span>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="collapse {% if show %} show {% endif %}" id="{{ id }}">
+    {{ caller() }}
+  </div>
+{% endmacro %}
+
+
+{% macro modal(id, title, size=None) %}
+  <div class="modal fade" id="{{ id }}" role="dialog" aria-hidden="true">
+    <div class="modal-dialog {% if size %} modal-{{ size }} {% endif %} modal-dialog-centered" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">{{ title }}</h5>
+          <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+            <i class="fa fa-times"></i>
+          </button>
+        </div>
+
+        {{ caller() }}
+      </div>
+    </div>
+  </div>
+{% endmacro %}
+
+
+{% macro file_upload_modal(id, url, title='File Upload', types=None, extensions=None,
+                           target=None, flash_message=None, close_on_uploaded=True, reload_on_uploaded=False) %}
+  {% call modal(id=id, title=title) %}
+    {% set input_id = unique_id() %}
+
+    <div class="modal-body">
+      <input type="file" id="{{ input_id }}" name="file">
+    </div>
+
+    <script>
+        var input = $('#{{ input_id }}');
+
+        input.fileinput({
+            theme: 'fa',
+            uploadUrl: '{{ url }}',
+            uploadAsync: true,
+            showPreview: true,
+            browseLabel: 'Browse',
+            msgPlaceholder: 'Select file ...',
+            slugCallback: function (filename) {
+                return filename;
+            },
+
+        {% if types %}
+            allowedFileTypes: {{ types|safe }},
+        {% endif %}
+
+        {% if extensions %}
+            allowedFileExtensions: {{ extensions|safe }},
+        {% endif %}
+        });
+
+        input.on('fileuploaded', function(event, data) {
+            {% if target is not none %}
+            var filename = data.files[0].name;
+            var target = $('{{ target }}');
+
+            target.append('<option value="' + filename + '">' + filename + '</option>');
+            target.val(filename).selectpicker("refresh").trigger('change');
+            {% endif %}
+
+            {% if flash_message is not none %}
+                flash_message('{{ flash_message }}', 'success');
+            {% endif %}
+
+            {% if close_on_uploaded %}
+                $('#{{ id }}').modal('hide');
+            {% endif %}
+
+            if ('message' in data.response)
+                flash_message(data.response['message'], data.response['category']);
+
+            {% if reload_on_uploaded %}
+                window.location.reload();
+            {% endif %}
+        });
+    </script>
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro sortable(min_scroll_speed=3, max_scroll_speed=100, scroll_step=1.5, max_height=0.6) %}
+  {% set id = unique_id() %}
+  <div id="{{ id }}" class="list-group" style="overflow-y: scroll">
+  {{ caller() }}
+  </div>
+
+  <script>
+  $(function () {
+      var root = $('#{{ id }}');
+      var items = $('.list-group-item', root);
+      var item_height = $(items[0]).outerHeight();
+      var data = [];
+      var scroll_step = {{ min_scroll_speed }} * item_height;
+      var scrolling = false;
+      var last_clientY = -1;
+      var click_timer = null;
+
+      root.css('max-height', window.innerHeight * {{ max_height }} + 'px');
+      root.contextmenu(function () {
+          return false;
+      });
+
+      items.each(function () {
+          $(this).attr('draggable', true);
+      });
+
+      items.on('dragstart', function (event) {
+          var target = $(event.target);
+          var id = target.data('id');
+
+          if (!data.includes(id))
+              data.push(id);
+      });
+
+      items.on('click', function (event) {
+          var target = $(event.target);
+          var id = target.data('id');
+          var parent = target.closest('.list-group-item');
+
+          if (!data.includes(id)) {
+              data.push(id);
+              parent.css('background-color', 'deeppink');
+          } else {
+              data.pop(data.indexOf(id));
+              parent.css('background-color', 'initial')
+          }
+      });
+
+      items.on('drop mousedown', function (event) {
+          var target = $(event.target);
+
+          if (event.type === 'mousedown' && event.which !== 3)
+              return;
+
+          if (!data.includes(target.data('id'))) {
+              data.sort(function (a, b) {
+                  return $('.list-group-item[data-id=' + a + ']').index() - $('.list-group-item[data-id=' + b + ']').index();
+              });
+              data.forEach(function (id) {
+                  $('.list-group-item[data-id=' + id + ']').css('background-color', 'initial').detach().insertBefore(target.closest('.list-group-item'));
+              });
+          }
+          data = [];
+      });
+
+      $(document).on('dragover', function (event) {
+          if (scrolling)
+              return;
+
+          item_height = $(items[0]).outerHeight();
+          scrolling = true;
+          var offset = root.offset();
+          var top = offset.top;
+          var bottom = offset.top + root.innerHeight();
+          var scrollTop = -1;
+          var movementY = event.clientY - last_clientY;
+
+          if (event.clientY - 100 < top) {
+              scrollTop = Math.max(root.prop('scrollTop') - scroll_step, 0);
+              if (movementY > 10)
+                  scroll_step = Math.max(scroll_step / {{ scroll_step }}, {{ min_scroll_speed }} * item_height);
+              else if (movementY < -10)
+                  scroll_step = Math.min(scroll_step * {{ scroll_step }}, {{ max_scroll_speed }} * item_height);
+          } else if (event.clientY + 100 > bottom) {
+              scrollTop = Math.min(root.prop('scrollTop') + scroll_step, root.prop('scrollHeight'));
+              if (movementY > 10)
+                  scroll_step = Math.min(scroll_step * {{ scroll_step }}, {{ max_scroll_speed }} * item_height);
+              else if (movementY < -10)
+                  scroll_step = Math.max(scroll_step / {{ scroll_step }}, {{ min_scroll_speed }} * item_height);
+          }
+
+          if (scrollTop >= 0) {
+              root.animate({scrollTop: scrollTop}, 20, function () {
+                  scrolling = false;
+              });
+
+              last_clientY = event.clientY;
+          } else {
+              scroll_step = {{ min_scroll_speed }} * item_height;
+              scrolling = false;
+          }
+
+      });
+  })
+  </script>
+{% endmacro %}
+
+{% macro category_option(name='category') %}
+  {% call(id, name) form_group(name=name, label='Category', **kwargs) %}
+    {% set delete_button = "<button class='btn btn-link' type='button' onClick='category_delete.call(this, event)'><span class='fa fa-times text-danger'></span></button>" %}
+    {% call(name) select(id, name, default='', title='\u00a0') %}
+      {{ select_option('', get_json_conf(name), label='\u00a0') }}
+      {% for category in get_categories() %}
+        {{ select_option(category, get_json_conf(name), tags=[category, delete_button]) }}
+      {% endfor %}
+      <option disabled data-content="<input type='text' placeholder='Add Category' onKeyDown='event.stopPropagation();' onClick='event.stopPropagation()'><button class='btn btn-link' type='button' onClick='category_add.call(this, event)'><span class='fa fa-plus'></span></button>"></option>
+    {% endcall %}
+    <script>
+        function category_add(event) {
+            event.stopPropagation();
+
+            var input = $(this).prev('input');
+            var category = input.val();
+            var select_id = $(this).closest('div.inner.show').attr('id');
+            var select = $('[aria-owns="' + select_id + '"]').prev('select');
+
+            if (category) {
+                if (!$('option[value="' + category +'"]', select).length) {
+                    option = $('option', select).eq(-1);
+                    option.before($("<option value=\"" +category + "\" data-content=\"" + colorful_label(category, quote="'") + "{{ delete_button|safe }}\"></option>"));
+                    select.selectpicker('refresh');
+                }
+                select.selectpicker('val', category);
+
+                $.ajax({
+                    url: "{{ url_for('category.add') }}",
+                    type: 'POST',
+                    data: 'category=' + category,
+                    dataType: 'json',
+                    success: function (result) {
+                        if ('error' in result) {
+                            flash_message(result['error']);
+                        } else {
+                            flash_message('Category ' + category + ' is added successfully', 'success');
+                        }
+                    }
+                });
+            }
+
+            input.val('');
+        }
+
+        function category_delete(event) {
+            event.stopPropagation();
+
+            var category = $(this).siblings('div.badge').text();
+            var select_id = $(this).closest('div.inner.show').attr('id');
+            var select = $('[aria-owns="' + select_id + '"]').prev('select');
+            select.find('option[value="' + category + '"]').remove();
+            if (select.selectpicker('val') === category)
+                select.selectpicker('val', '');
+
+            select.selectpicker('refresh');
+            $.ajax({
+                url: '/category/' + category + '/delete',
+                type: 'POST',
+                dataType: 'json',
+                success: function (result) {
+                    if ('error' in result) {
+                        flash_message(result['error']);
+                    } else {
+                        flash_message('Category ' + category + ' is deleted successfully', 'success');
+                    }
+                }
+            })
+        }
+    </script>
+  {% endcall %}
+{% endmacro %}
+
+
+{% macro table(columns=[], disabled=[], toolbar='', columnDefs=[], search=True, card=True, data=None) %}
+  {% set preference_disabled = current_user.table_settings('column_disabled', columns=columns) %}
+  {% set disabled = preference_disabled if preference_disabled is not none else disabled %}
+  {% set table_id = unique_id() %}
+  {% set dropdown_id = unique_id() %}
+  {% set input_search_id = unique_id() %}
+  {% set input_visible_class = unique_id() %}
+
+  {% if data is not none %}
+  {% do columns.insert(0, '<input class="ml-1" type="checkbox" onchange="mass_select.call(this, event)">'|safe) %}
+  {% set t = [0] %}
+  {% for i in disabled %}
+    {% do t.append(i + 1) %}
+  {% endfor %}
+  {% set disabled = t %}
+  {% endif %}
+
+  {% if search or toolbar %}
+  <div class="input-group mb-3">
+    <input class="form-control mr-3" id="{{ input_search_id }}" type="text" placeholder="Search">
+    {% if data is not none %}
+    <button type="button" id="advanced-search-reset" class="btn btn-link" onclick="advanced_search_reset.call(this, event)" style="margin-left: -40px; z-index: 1000; visibility: hidden;"><i class="fa fa-trash-undo"></i></button>
+    <button type="button" class="btn btn-outline-primary" data-toggle="modal" data-target="#advanced-search">Advanced Search</button>
+    <button type="button" class="btn btn-outline-primary" onclick="table_set_page_number.call(this, 'previous')">Prev</button>
+    <button type="button" class="btn btn-outline-primary" onclick="table_set_page_number.call(this, 'next')">Next</button>
+    <button data-toggle="dropdown" type="button" class="btn btn-outline-primary dropdown-toggle dropdown-toggle-split" aria-expanded="false"></button>
+    <div class="dropdown-menu dropdown-menu-right" style="overflow: auto; max-height: 80vh !important;" onclick="event.stopPropagation()">
+      <a class="dropdown-item" href="#">
+        <div class="input-group">
+          <button type="button" class="btn btn-outline-primary w-50" onclick="table_set_page_number.call(this, 'first')">First Page</button>
+          <button type="button" class="btn btn-outline-primary w-50" onclick="table_set_page_number.call(this, 'last')">Last Page</button>
+        </div>
+      </a>
+      <a class="dropdown-item" href="#">
+        <div id="page-size" class="input-group">
+          <input type="number" min="10" class="form-control form-control-sm" placeholder="Page size" onkeyup="table_check_page_size.call(this, event)">
+          <button type="button" class="btn btn-outline-primary w-50" onclick="table_set_page_size.call(this)">Pagination</button>
+        </div>
+      </a>
+      <a class="dropdown-item" href="#">
+        <div id="page-number" class="input-group">
+          <input type="number" min="1" class="form-control form-control-sm" placeholder="Page number" onkeyup="table_check_page_number.call(this, event)">
+          <button type="button" class="btn btn-outline-primary w-50" onclick="table_set_page_number.call(this)">Go</button>
+        </div>
+      </a>
+    </div>
+    <button type="button" class="btn btn-primary" onclick="mass_action.call(this, event)">Mass Action</button>
+    <!-- fix the bootstrap dropdown menu can not works if mutiple dropdown in same div issue -->
+    <div>
+      <button data-toggle="dropdown" type="button" class="btn btn-primary dropdown-toggle dropdown-toggle-split" aria-expanded="false" style="width: 100%; height: 100%; border-top-left-radius: 0; border-bottom-left-radius: 0"></button>
+      <div class="dropdown-menu dropdown-menu-right">
+        {% for item in toolbar %}
+          <a class="dropdown-item" href="#">{{ item|safe }}</a>
+        {% endfor %}
+        <a class="dropdown-item" href="#">
+          <button type="button" class="btn btn-danger" onclick="mass_delete.call(this, event)">Mass Delete</button>
+        </a>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+
+  {% call modal(id='advanced-search', title='Advanced Search') %}
+    <div class="modal-body">
+    </div>
+    <div class="modal-footer">
+      <div class="form-group float-right">
+        <button type="button" class="btn btn-info" onclick="advanced_search_reset.call(this, event)">Reset<i class="fa fa-trash ml-3"></i></button>
+        <button type="button" class="btn btn-primary" onclick="advanced_search.call(this, event)">Search<i class="fa fa-search ml-3"></i></button>
+      </div>
+    </div>
+  {% endcall %}
+
+  {% if card %}
+  <div class="card">
+  {% endif %}
+    <div class="table-responsive" style="overflow: visible">
+      <table class="table table-hover table-vcenter card-table" id="{{ table_id }}">
+        <thead>
+          <tr>
+            {% for col in columns %}
+              <th>
+              {% if loop.index0 not in disabled %}
+                {{ col }}
+                {% if loop.last %}
+                  <a href="#" class="btn btn-link" data-toggle="dropdown" data-target="#{{ dropdown_id }}">
+                    <i class="fa fa-cog fa-xs"></i>
+                  </a>
+                {% endif %}
+              {% endif %}
+              </th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {{ caller() }}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="dropdown" id="{{ dropdown_id }}">
+      <div class="dropdown-menu dropdown-menu-arrow dropdown-menu-right">
+        <span class="dropdown-header">Show Columns</span>
+        {% for c in columns %}
+          {% if not loop.first and not loop.last %}
+            <label class="dropdown-item">
+              <input class="{{ input_visible_class }}" type="checkbox"
+                     data-column="{{ c }}" data-index="{{ loop.index0 }}"
+                  {% if loop.index0 not in disabled %} checked {% endif %}>
+              &nbsp;&nbsp;{{ c }}
+            </label>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+
+  {% if card %}
+  </div>
+  {% endif %}
+
+  {% if data is not none %}
+  {% set modal_id = unique_id() %}
+  <div class="modal hide" id="{{ modal_id }}" role="dialog" aria-hidden="true"
+       data-backdrop="false" data-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+      <div class="preloader">
+        <span></span>
+        <span></span>
+        <span></span>
+        <span></span>
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+      <style>
+        .preloader {
+          width: 100px;
+          height: 100px;
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate3d(-50%, -50%, 0) scale3d(1, 1, 1);
+          z-index: 10;
+          transition: transform 0.3s;
+          cursor: pointer;
+        }
+        .preloader:hover {
+          transform: translate3d(-50%, -50%, 0) scale3d(0.8, 0.8, 0.8);
+        }
+        .preloader > span {
+          display: block;
+          position: absolute;
+          border: 1px solid rgba(245, 245, 245, 0);
+          border-radius: 50%;
+          -webkit-font-smoothing: subpixel-antialiased;
+          -webkit-backface-visibility: hidden;
+          backface-visibility: hidden;
+          pointer-events: none;
+          -webkit-user-select: none;
+          -moz-user-select: none;
+          -ms-user-select: none;
+          user-select: none;
+        }
+        .preloader > span:nth-child(1) {
+          top: 1px;
+          right: 1px;
+          bottom: 1px;
+          left: 1px;
+          -webkit-animation: spinClockwise 2s infinite linear normal;
+          animation: spinClockwise 2s infinite linear normal;
+          border-right-color: #FF00EB;
+        }
+        .preloader > span:nth-child(2) {
+          top: 5px;
+          right: 5px;
+          bottom: 5px;
+          left: 5px;
+          -webkit-animation: spinClockwise 4s infinite linear normal;
+          animation: spinClockwise 4s infinite linear normal;
+          border-left-color: #04fda7;
+        }
+        .preloader > span:nth-child(3) {
+          top: 9px;
+          right: 9px;
+          bottom: 9px;
+          left: 9px;
+          -webkit-animation: spinClockwise 6s infinite linear normal;
+          animation: spinClockwise 6s infinite linear normal;
+          border-right-color: #616CFF;
+        }
+        .preloader > span:nth-child(4) {
+          top: 13px;
+          right: 13px;
+          bottom: 13px;
+          left: 13px;
+          -webkit-animation: spinClockwise 3s infinite linear normal;
+          animation: spinClockwise 3s infinite linear normal;
+          border-top-color: #FF00EB;
+        }
+        .preloader > span:nth-child(5) {
+          top: 17px;
+          right: 17px;
+          bottom: 17px;
+          left: 17px;
+          -webkit-animation: spinClockwise 5s infinite linear normal;
+          animation: spinClockwise 5s infinite linear normal;
+          border-bottom-color: #04fda7;
+        }
+        .preloader > span:nth-child(6) {
+          top: 21px;
+          right: 21px;
+          bottom: 21px;
+          left: 21px;
+          -webkit-animation: spinClockwise 3s infinite linear normal;
+          animation: spinClockwise 3s infinite linear normal;
+          border-top-color: #00C9F9;
+        }
+        .preloader > span:nth-child(7) {
+          top: 25px;
+          right: 25px;
+          bottom: 25px;
+          left: 25px;
+          -webkit-animation: spinClockwise 4s infinite linear normal;
+          animation: spinClockwise 4s infinite linear normal;
+          border-bottom-color: #00C9F9;
+        }
+
+        @-webkit-keyframes spinClockwise {
+          to {
+            transform: translate3d(0, 0, 0) rotate(360deg);
+          }
+        }
+        @keyframes spinClockwise {
+          to {
+            transform: translate3d(0, 0, 0) rotate(360deg);
+          }
+        }
+
+      </style>
+    </div>
+  </div>
+  {% endif %}
+
+
+  <script>
+      var table;
+
+      function mass_select(event) {
+          var checked = $(this).is(':checked');
+
+          table.rows({'search': 'applied'}).nodes().each(function (tr, index) {
+              $('input.row-checkbox', tr).prop('checked', checked);
+          });
+      }
+
+      function mass_action(event) {
+          table.column(0).visible(!table.column(0).visible());
+      }
+
+      function advanced_search_reset() {
+          $('.advanced-search').each(function () {
+              if ($(this).is('input'))
+                  $(this).val('');
+              else if ($(this).is('select'))
+                  $(this).selectpicker('val', '');
+          });
+
+          table.draw();
+          $('#advanced-search-reset').css('visibility', 'hidden');
+          $('#advanced-search').modal('hide');
+      }
+
+      function advanced_search(event) {
+          table.draw();
+          if (table.rows({'search': 'applied'}).count() < table.rows().count())
+              $('#advanced-search-reset').css('visibility', 'visible');
+
+          $('#advanced-search').modal('hide');
+      }
+
+      function mass_select_each(func, selector) {
+          selector = typeof selector === 'undefined' ? 'input.row-checkbox:checked' : selector;
+          table.rows().every(function () {
+              var row = this.node();
+              if ($(selector, row).length > 0)
+                  func.call(row);
+          });
+      }
+
+      function mass_delete() {
+          var names = [];
+          var urls = [];
+
+          mass_select_each(function () {
+              var tr = $(this).closest('tr');
+              names.push('<div class="badge bg-primary">' + tr.data('name') + '</div>');
+
+              var url = $('td form[method="post"][action$="delete"]', tr).attr('action');
+              if (!url)
+                  url = $('td button[formaction$="delete"]', tr).attr('formaction');
+
+              urls.push(url);
+          });
+
+          confirm_box('Please confirm to delete following {{ data }}?<br/>' + names.join('&nbsp;'), function () {
+              var queue = [];
+              urls.forEach(function (url) {
+                  queue.push(
+                      $.ajax({
+                          type: 'POST',
+                          url: url
+                      })
+                  );
+              });
+
+              $.when.apply($, queue).done(function () {
+                  location.reload();
+              });
+          });
+      }
+
+      function table_check_page_size() {
+          var page_size = parseInt($(this).val());
+
+          if (page_size <= 0) {
+              $(this).addClass('is-invalid');
+          } else {
+              $(this).removeClass('is-invalid');
+          }
+
+          $('#page-size button').prop('disabled', page_size <= 0);
+      }
+
+      function table_set_page_size() {
+          var data_size = table.data().rows().count();
+          var page_size = parseInt($('#page-size input').val() || 100);
+          var page_number = $('#page-number input');
+          var menu = $('#page-size').closest('.dropdown-menu');
+
+          table.page.len(page_size).draw(false);
+
+          menu.find('.dropdown-item.page-buttons').remove();
+          var page_num = 1;
+          for (var i = 1; i <= data_size; i += page_size * 2) {
+              var buttons = '';
+              if (i <= data_size) {
+                  buttons += '<button class="btn btn-outline-primary w-50" onclick="table_set_page_number(' + page_num + ')">' + page_num + ' / ' + i + ' - ' + (i + page_size - 1) + '</button>';
+                  page_num++;
+              }
+
+              if (i + page_size <= data_size) {
+                  buttons += '<button class="btn btn-outline-primary w-50" onclick="table_set_page_number(' + page_num + ')">' + page_num + ' / ' + (i + page_size) + ' - ' + (i + page_size * 2 - 1) + '</button>';
+                  page_num++;
+              }
+              menu.append($('<a class="dropdown-item page-buttons" href="#"><div class="input-group">' + buttons + '</div></a>'));
+          }
+
+          page_number.val(table.page() + 1);
+          page_number.prop('max', page_num - 1);
+          table_update_preferences();
+      }
+
+      function table_check_page_number() {
+          var page_number = parseInt($(this).val());
+          var disabled = false;
+
+          if ($(this).val() === '' || (!isNaN(page_number) && page_number >= 1 && page_number <= parseInt($(this).prop('max')))) {
+              $(this).removeClass('is-invalid');
+          } else {
+              $(this).addClass('is-invalid');
+              disabled = true;
+          }
+
+          $('#page-number button').prop('disabled', disabled);
+      }
+
+      function table_set_page_number(page_number) {
+          var input = $('#page-number input');
+          var page_controls = ['previous', 'next', 'first', 'last'];
+
+          if (typeof page_number === 'undefined') {
+              page_number = parseInt(input.val());
+          } else if (!page_controls.includes(page_number)) {
+              input.val(page_number);
+          }
+
+          if (!isNaN(page_number) && page_number >= 1 && page_number <= parseInt(input.prop('max'))) {
+              table.page(page_number - 1).draw(false);
+          } else if (page_controls.includes(page_number)) {
+              table.page(page_number).draw(false);
+          }
+
+          input.val(table.page() + 1);
+          table_update_preferences();
+      }
+
+      function table_update_preferences() {
+          var column_disabled = [];
+
+          $('.{{ input_visible_class }}').each(function () {
+              if (!$(this).is(':checked')) {
+                  column_disabled.push($(this).data('column'));
+              }
+          });
+
+          var data = {
+              page_size: table.page.len(),
+              page_number: table.page() + 1,
+              column_disabled: column_disabled
+          };
+
+          $.ajax({
+              url: '{{ url_for("account.table_settings", account=current_user, table=request.path[1:].replace('/', '-')) }}',
+              type: 'post',
+              data: JSON.stringify(data),
+              contentType: 'application/json',
+              dataType: 'json',
+              success: function (response) {
+                  if ('message' in response)
+                      flash_message(response['message'], response['category']);
+              }
+          });
+      }
+
+      {% if data is not none %}
+      $('#{{ modal_id }}').modal('show').css({
+          'margin-left': function () {
+              return $('table[id]').offset().left / 2;
+          },
+          'margin-top': function () {
+              return $('table[id]').offset().top / 2;
+          }
+      });
+      {% endif %}
+
+      var columnDefs = {{ columnDefs|safe }};
+
+      {% if data is not none %}
+          columnDefs.forEach(function (column) {
+              if ('type' in column && 'targets' in column) {
+                  if (typeof column['targets'] === 'number') {
+                      column['targets'] += 1;
+                  } else if (Array.isArray(column['targets'])) {
+                      column['targets'] = column['targets'].map(function (index) {
+                          return index + 1;
+                      });
+                  }
+              }
+          });
+      {% endif %}
+
+      columnDefs.push({
+          targets: [{% if data is not none %}0, {% endif %}{{ columns|length - 1 }}],
+          orderable: false
+      });
+
+      {% for c in columns %}
+          {% if loop.index0 in disabled %}
+          columnDefs.push({
+              targets: {{ loop.index0 }},
+              title: '{{ c|safe }}'
+          });
+          {% endif %}
+      {% endfor %}
+
+      table = $('#{{ table_id }}').DataTable({
+          paging: {% if data is not none %}true{% else %}false{% endif %},
+          searching: true,
+          info: false,
+          autoWidth: false,
+          scrollX: true,
+          columnDefs: columnDefs
+      });
+
+      {% if search %}
+          $('#{{ input_search_id }}').keypress(function(e) {
+              if(e.which === 13)
+                  table.search($(this).val()).draw();
+          });
+      {% endif %}
+
+      $('.{{ input_visible_class }}').on('change', function (e, disable_ajax) {
+          var disabled = [];
+          $('.{{ input_visible_class }}').each(function () {
+              if (!$(this).is(':checked')) {
+                  disabled.push($(this).data('column'));
+              }
+          });
+
+          if (!disable_ajax) {
+              table_update_preferences();
+          }
+
+          table.column($(this).data('index')).visible($(this).is(':checked'));
+      }).trigger('change', true);
+
+      $('#{{ dropdown_id }}').on('show.bs.dropdown', function (event) {
+          var button = $('[data-target="#{{ dropdown_id }}"]');
+
+          $(this).css({
+              'position': 'absolute',
+              'top': button.outerHeight() / 2,
+              'left': button.outerWidth() / 2
+          });
+      });
+
+      {% if data is not none %}
+          mass_action();    /* hide the mass action's checkbox */
+
+          for (var i = 0; i < {{ data }}.length; i++) {
+              var e = $({{ data }}[i]);
+              e.prepend('<td><input class="row-checkbox ml-1" type="checkbox"></td>');
+              table.rows.add(e);
+          }
+
+          {% if current_user.table_settings('page_size') is not none %}
+              $('#page-size input').val({{ current_user.table_settings('page_size') }});
+          {% endif %}
+          table_set_page_size();
+          table.draw();
+
+          {% if current_user.table_settings('page_number') is not none %}
+              table_set_page_number({{ current_user.table_settings('page_number') }});
+          {% endif %}
+
+
+          $('#{{ modal_id }}').modal('hide').remove();
+
+          var number_columns = [
+              'id', 'cpu', 'memory', 'gpu dec', 'gpu memory', 'gpu enc', 'bitrate', 'quality', 'fps', 'speed', 'connections',
+              'upload', 'download', 'streams', 'keyint', 'frequency', 'symbol rate', 'port', 'seasons', 'episodes',
+              'movies', 'series', 'prices', 'max connections', 'credits'
+          ];
+          var select_columns = [
+              'server', 'category', 'profile', 'hwaccel', 'video encoders', 'audio encoders', 'preset',
+              'caid', 'owner', 'status', 'role', 'protocol', 'country code'
+          ];
+
+          for (var i = 1; i < {{ columns|length }} - 1; i++) {
+              var t = table.column(i).data();
+              var col = table.column(i).header().textContent.trim().toLowerCase();
+              var div = '<div class="form-group row">' +
+                        '  <label class="form-label col-4"><div class="badge bg-primary">' + col.toUpperCase() + '</div></label>' +
+                        '  <div class="col-8">';
+
+              if (number_columns.includes(col)) {
+                  div += '    <div class="input-group" style="width: 100%">' +
+                         '      <div class="has-float-label" style="width: 50%">' +
+                         '        <input id="' + col + '-min" type="number" autocomplete="off" class="advanced-search form-control">' +
+                         '        <label>min</label>' +
+                         '      </div>' +
+                         '      <div class="has-float-label" style="width: 50%">' +
+                         '        <input id="' + col + '-max" type="number" autocomplete="off" class="advanced-search form-control">' +
+                         '        <label>max</label>' +
+                         '      </div>' +
+                         '    </div>';
+              } else if (select_columns.includes(col)) {
+                  div += '    <select id="' + col + '" class="advanced-search selectpicker form-control"  title="&nbsp;" data-actions-box="true" data-live-search="true" data-live-search-placeholder="Search" data-multiple-separator=" " multiple>';
+                  new Set(t.toArray()).forEach(function (value) {
+                      var v = $.map($(value), function (v) {return $(v).html();}).join(' ');
+                      if (v)
+                          div += '<option value="' + v + '" data-content=\'' + value + '\'></option>';
+                  });
+                  div += '    </select>';
+              } else {
+                  div += '<input id="' + col + '" type="text" autocomplete="off" class="advanced-search form-control">'
+              }
+
+              div += '  </div>' +
+                     '</div>';
+              $(div).appendTo('#advanced-search .modal-body');
+              if (select_columns.includes(col))
+                  $('#' + col).selectpicker();
+          }
+
+          $.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
+              for (var i = 1; i < data.length - 1; i++) {
+                  var col = table.column(i).header().textContent.trim().toLowerCase();
+
+                  if (number_columns.includes(col)) {
+                      var min = $('#' + col + '-min').val();
+                      var max = $('#' + col + '-max').val();
+                      if (typeof min !== 'undefined' && parseFloat(data[i]) < parseFloat(min))
+                          return false;
+                      if (typeof max !== 'undefined' && parseFloat(data[i]) > parseFloat(max))
+                          return false;
+                  } else if (select_columns.includes(col)) {
+                      val = $('#' + col).selectpicker('val');
+                      if (val.length > 0 && !val.includes(data[i].replace(/\s+/g, ' ')))
+                          return false;
+                  } else {
+                      val = $('#' + col).val();
+                      if (val && !new RegExp(val).test(data[i]))
+                          return false;
+                  }
+              }
+
+              return true;
+          });
+      {% endif %}
+  </script>
+{% endmacro %}
+
+
+{% macro file_browser(modal_id, callback, multiple=False, extensions=video_extensions) %}
+  {% set table_id = unique_id() %}
+  {% set server_id = unique_id() %}
+  {% set server_path_id = unique_id() %}
+
+  <div class="modal modal-blur fade" id="{{ modal_id }}" tabindex="-1" role="dialog" style="display: none;" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">File Browser</h5>
+          <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+            <i class="fa fa-times"></i>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="row mb-3">
+            <div class="col-6">
+              <label class="form-label">Server</label>
+              {% call(name) select(id=server_id) %}
+                {% for server in get_servers() %}
+                  {{ select_option(server.id, '', tags=[server.name]) }}
+                {% endfor %}
+              {% endcall %}
+
+              <script>
+                  $('#{{ server_id }}').on('change', function () {
+                      file_browser_reload();
+                  });
+              </script>
+            </div>
+            <div class="col-6">
+              <label class="form-label">Path</label>
+              <div class="input-group">
+                <input class="form-control" id="{{ server_path_id }}" value="/">
+                <button class="btn btn-primary" type="button" onclick="file_browser_reload()">Go</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="table-responsive">
+              <table class="table table-vcenter card-table" id="{{ table_id }}">
+                <thead class="d-none">
+                <tr>
+                  <th>Name</th>
+                </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+
+          <button class="btn btn-primary float-right px-5" type="button" onclick="file_browser_done()">Add</button>
+
+          <script>
+              var server_id = $('#{{ server_id }}');
+              var server_path = $('#{{ server_path_id }}');
+              var file_browser = $('#{{ table_id }}').DataTable({
+                  paging: false,
+                  searching: true,
+                  info: false,
+                  scrollY: window.innerHeight * 0.6,
+                  columnDefs: [
+                      {
+                          render: function (data, type, row) {
+                              var icon = 'fa-file';
+
+                              if (data.match(/\/$/)) {
+                                  icon = 'fa-folder';
+                              } else if (data === '..') {
+                                  icon = 'fa-reply';
+                              }
+
+                              return '<div class="px-3" data-filename="' + data + '" style="cursor: pointer">' +
+                                     '  <i class="fa '+ icon + ' mr-3"></i>' + data +
+                                     '</div>';
+                          },
+                          targets: [0]
+                      }
+                  ],
+                  drawCallback: function (settings) {
+                      $('#{{ table_id }} tbody tr').on('click', function () {
+                          var filename = $('[data-filename]', this).data('filename');
+                          var path = server_path.val();
+
+                          if (filename === '..') {
+                              path = path.replace(/(.*\/).+/, '$1');
+                              server_path.val(path);
+                              file_browser_reload();
+                          } else if (filename.match(/\/$/)) {
+                              path += filename;
+                              server_path.val(path);
+                              file_browser_reload();
+                          }  else {
+                            {% if not multiple %}
+                                if (!$(this).closest('tr').hasClass('selected'))
+                                $('#{{ table_id }} tbody tr.selected').each(function () {
+                                    $(this).toggleClass('selected');
+                                });
+                            {% endif %}
+
+                              $(this).closest('tr').toggleClass('selected');
+                          }
+                      });
+                  }
+              });
+
+              function file_browser_done() {
+                  var path = server_path.val();
+                  var result = [];
+
+                  $('#{{ table_id }} tbody tr.selected td div[data-filename]').each(function () {
+                      var filename = $(this).data('filename');
+                      result.push(path.match(/\/$/) ? path + filename : path + '/' + filename);
+                  });
+
+                  {{ callback|safe }}(server_id.val(), result);
+                  $('#{{ modal_id }}').modal('hide');
+              }
+
+              function file_browser_reload() {
+                  var extensions = {{ extensions|safe }};
+                  file_browser.ajax.url(
+                      '/server/' + server_id.val() + '/listdir?path=' +  server_path.val() + '&' + extensions.map(function (v) {return 'extensions=' + v;}).join('&')
+                  ).load();
+              }
+
+              file_browser_reload();
+          </script>
+
+          <style>
+            #{{ table_id }} > tbody > tr.selected > td > div {
+              background: lightpink !important;
+              box-shadow: 0 0 6px lightpink !important;
+              border-radius: 3px !important;
+            }
+          </style>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endmacro %}
+
+
+{% macro progress_modal(progress_url, cancel_url='') %}
+  {% set modal_id = unique_id() %}
+  {% set progress_id = unique_id() %}
+  {% set message_id = unique_id() %}
+
+  <div class="modal modal-blur hide" id="{{ modal_id }}" role="dialog" aria-hidden="true"
+       data-backdrop="static" data-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+      <div class="modal-content">
+        <div class="modal-body py-2" style="text-align: center">
+          <div class="progress progress-sm mt-5">
+            <div id="{{ progress_id }}" class="progress-bar progress-bar-striped progress-bar-animated progress-bar-indeterminate" style="width: 0"></div>
+          </div>
+          <br/>
+          <span id="{{ message_id }}" class="text-info">Initializing ...</span>
+        </div>
+        {% if cancel_url %}
+          {% set cancel_id = unique_id() %}
+          <div class="modal-footer">
+            <button id="{{ cancel_id }}" class="btn btn-warning btn-sm" type="button">Cancel</button>
+            <script>
+              $('#{{ cancel_id }}').on('click', function () {
+                  $.ajax({
+                      url: '{{ cancel_url }}',
+                      type: 'POST'
+                  })
+              });
+            </script>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <script>
+      function progress_modal_update () {
+          var progress  = $('#{{ progress_id }}');
+          var message = $('#{{ message_id }}');
+          var show = true;
+          var completed = false;
+
+          $.ajax({
+              url: '{{ progress_url }}',
+              success: function (response) {
+                  if (show) {
+                      $('#{{ modal_id }}').modal('show');
+                      show = false;
+                  }
+
+                  message.html(response['message']);
+
+                  if (response['progress'] > 0) {
+                      progress.css('width', response['progress'] + '%');
+                      progress.removeClass('progress-bar-indeterminate');
+                  }
+
+                  if (response['progress'] === 100) {
+                      completed = true;
+
+                      $('#{{ modal_id }} .modal-content .modal-footer').remove();
+
+                      message.html('Completed!');
+                      /*
+                      $(
+                          '<div class="modal-footer">' +
+                          '  <a href="#" class="btn btn-secondary" data-dismiss="modal">Completed!</a>' +
+                          '</div>'
+                      ).hide().appendTo('#{{ modal_id }} .modal-content').fadeIn();
+                      */
+                  }
+              },
+              complete: function () {
+                  if (!completed)
+                      progress_modal_update();
+              }
+          });
+      }
+  </script>
+{% endmacro %}

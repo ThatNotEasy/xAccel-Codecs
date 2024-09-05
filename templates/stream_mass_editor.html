@@ -1,0 +1,103 @@
+{% extends "layout.html" %}
+{% from "bootstrap.html" import panel, table, form_group, input, checkbox, divider, select, select_option,
+                                float_group, float_label with context %}
+
+{% block title %}Stream Mass Editor{% endblock %}
+
+
+{% block content %}
+  {% call panel('Stream Mass Editor') %}
+    <form class="form-horizontal" data-toggle="validator" action="{{ request.path }}" method="post">
+      {% call(id, name) form_group(name='target', label='Target') %}
+        {% call(name) select(id, name, default='input_urls') %}
+          {{ select_option('name', get_json_conf(name), label='Stream Name') }}
+          {{ select_option('input_urls', get_json_conf(name), label='Source Stream URL') }}
+        {% endcall %}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='pattern', label='Pattern') %}
+        {{ input(id, name, get_json_conf(name), 'required') }}
+      {% endcall %}
+
+      {% call(id, name) form_group(name='replacement', label='Replacement') %}
+        {{ input(id, name, get_json_conf(name), 'required') }}
+      {% endcall %}
+
+      {% call(id, name) form_group() %}
+        <div class="float-right">
+          <a href="{{ url_for('stream.manage') }}" class="btn btn-warning" style="width: 10ch">Cancel</a>
+          {% if result %}
+            <input name="result" value="{{ get_json_conf('target') }}-{{ get_json_conf('pattern') }}-{{ get_json_conf('replacement') }}" hidden>
+            <button id="submit" class="btn btn-primary" type="submit">Save</button>
+          {% else %}
+            <button id="submit" class="btn btn-outline-primary" type="submit" name="test_only" value="yes">Run Test</button>
+          {% endif %}
+        </div>
+      {% endcall %}
+
+      <script>
+          $('[name="target"], [name="pattern"], [name="replacement"]').on('keydown keyup change', function submit_update() {
+              var result = $('[name="result"]').val();
+              var name = $('[name="target"]').val();
+              var pattern = $('[name="pattern"]').val();
+              var replacement = $('[name="replacement"]').val();
+              var submit = $('#submit');
+
+              if (result === name + '-' + pattern + '-' + replacement) {
+                  submit.removeClass('btn-outline-primary').addClass('btn-primary');
+                  submit.removeAttr('name').removeAttr('value').html('Save');
+              } else {
+                  submit.removeClass('btn-primary').addClass('btn-outline-primary');
+                  submit.attr('name', 'test_only').attr('value', 'yes').html('Run Test');
+              }
+          });
+      </script>
+    </form>
+  {% endcall %}
+
+  {% if result is not none %}
+    <div class="card">
+      <div class="card-header">
+        <h6 class="card-title">Result</h6>
+        <div class="ml-3 text-bold {% if result|length > 0 %} text-success {% else %} text-danger {% endif %}">{{ result|length }} matched</div>
+      </div>
+      {% call table(columns=['ID', 'Name', 'Old URL/Name', 'New URL/Name'], search=False, card=False) %}
+        {% for stream_id, name, origin, new in result %}
+          <tr>
+            <td>{{ stream_id }}</td>
+            <td><div class="badge bg-primary">{{ name }}</div></td>
+            <td style="word-wrap: break-word; word-break: break-all; font-size: smaller">{{ origin|safe }}</td>
+            <td style="word-wrap: break-word; word-break: break-all; font-size: smaller">{{ new|safe }}</td>
+          </tr>
+        {% endfor %}
+      {% endcall %}
+    </div>
+  {% else %}
+    <div class="modal modal-blur fade hide" id="modal-warning" tabindex="-1" role="dialog" aria-modal="true" style="display: block;">
+      <div class="modal-dialog modal-sm modal-dialog-centered" role="document">
+        <div class="modal-content">
+          <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+            <i class="fa fa-times"></i>
+          </button>
+          <div class="modal-body text-center py-5">
+            <i class="fa fa-3x fa-exclamation-circle text-warning"></i>
+            <h3>Warning</h3>
+            <div class="text-muted">
+              This tool is for mass edit the stream name or source stream URLs. Please make sure you did a database backup before you
+              doing anything else.
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-info btn-block" data-dismiss="modal">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+        setTimeout(function () {
+            $('#modal-warning').modal('show');
+        }, 1000)
+    </script>
+  {% endif %}
+{% endblock %}

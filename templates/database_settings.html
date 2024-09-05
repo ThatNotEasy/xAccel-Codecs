@@ -1,0 +1,78 @@
+{% extends "layout.html" %}
+{% from "bootstrap.html" import panel, table, form, form_group, input, select, select_option, divider,
+                                timer_selectpicker, file_upload_modal, colorful_label with context %}
+{% block title %}Database Settings{% endblock %}
+
+{% block content %}
+  {% set toolbar = [
+      '<form action="%s" method="post"><button type="submit" class="btn btn-primary">Backup Now</button></form>'|format(url_for('database.backup')),
+      '<button class="btn btn-info" type="button" data-toggle="modal" data-target="#database_restore_modal">Restore From</button>',
+  ] %}
+  <script>
+      var backups = [
+      {% for backup in backups %}
+          '<tr data-id="{{ backup['sha1'] }}" data-name="{{ backup['sha1'] }}">' +
+          '  <td>{{ backup['sha1'] }}</td>' +
+          '  <td>{{ backup['date'] }}</td>' +
+          '  <td>{{ backup['size']|filesizeformat }}</td>' +
+          '  <td>{{ backup['version'] }}</td>' +
+          '  <td>' +
+          '    <input name="kept_backups"' +
+          '           onchange="kept_backups_update.call(this)"' +
+          '           class="form-check-input"' +
+          '           type="checkbox"' +
+          '           value="{{ backup['filename'] }}"' +
+          '           {% if backup['kept'] %}checked{% endif %}>' +
+          '  </td>' +
+          '  <td>' +
+          '    <form method="post">' +
+          '      <a href="{{ url_for('database.backup_download', filename=backup['filename']) }}" class="btn btn-link" title="download">' +
+          '        <i class="fa fa-arrow-circle-down"></i>' +
+          '      </a>' +
+
+          '      <button type="submit" class="btn btn-link" title="restore"' +
+          '              formaction="{{ url_for('database.backup_restore', filename=backup['filename']) }}"' +
+          '              data-toggle="confirmation"' +
+          '              data-message="Please confirm to restore the database from backup {{ backup['sha1'] }}?">' +
+          '        <i class="fa fa-file-import"></i>' +
+          '      </button>' +
+
+          '      <button type="submit" class="btn btn-link" title="delete"' +
+          '              formaction="{{ url_for('database.backup_delete', filename=backup['filename']) }}"' +
+          '              data-toggle="confirmation"' +
+          '              data-message="Please confirm to delete the database backup {{ backup['sha1'] }}?">' +
+          '        <i class="fa fa-times text-danger"></i>' +
+          '      </button>' +
+          '    </form>' +
+          '  </td>' +
+          '</tr>'{% if not loop.last %},{% endif %}
+      {% endfor %}
+      ];
+  </script>
+  {% call table(columns=['SHA1', 'Date', 'Size', 'Version', 'Keep When Rotate', 'Settings'], data='backups', toolbar=toolbar) %}
+  {% endcall %}
+  {{ file_upload_modal('database_restore_modal', title='Database Restore', url=url_for('database.restore'), extensions=['gz']) }}
+
+  <script>
+      function kept_backups_update() {
+          var data = [];
+          $('[name="kept_backups"]:checked').each(function () {
+              data.push('kept_backups=' + $(this).val());
+          });
+
+          $.ajax({
+              url: '{{ url_for('database.backup_kept') }}',
+              type: 'POST',
+              data: data.join('&'),
+              dataType: 'json',
+              success: function (result) {
+                  if ('error' in result) {
+                      flash_message(result['error']);
+                  } else {
+                      flash_message('Changes saved successfully', 'success');
+                  }
+              }
+          })
+      }
+  </script>
+{% endblock %}

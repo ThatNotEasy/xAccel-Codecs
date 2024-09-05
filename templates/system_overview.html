@@ -1,0 +1,115 @@
+{% extends "layout.html" %}
+{% from "bootstrap.html" import panel, form, form_group, input, select, select_option, colorful_label with context %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block script %}
+  <!--suppress ALL -->
+  <script src="/static/js/moment.min.js"></script>
+  <script src="/static/js/Chart.min.js"></script>
+{% endblock %}
+
+
+{% macro progress_bar(label, percent) %}
+  <div class="mt-2 {{ label|lower }}">
+    <div class="d-flex mb-1 align-items-center lh-1">
+      <div class="text-h5 font-weight-bolder">{{ label }}</div>
+      <span class="ml-auto text-h6 strong">{{ percent }}%</span>
+    </div>
+    <div class="progress progress-sm">
+      <div class="progress-bar bg-blue" style="width: {{ percent }}%" role="progressbar" aria-valuenow="{{ percent }}" aria-valuemin="0" aria-valuemax="100">
+      </div>
+    </div>
+  </div>
+{% endmacro %}
+
+
+{% block content %}
+  <div class="row row-deck row-cards">
+    {% for server in servers %}
+      <div class="col-md-6 col-lg-3">
+        <div class="card" id="server-{{ server.id }}-card">
+          <div class="card-body py-3">
+            <div class="row">
+              <div class="col-auto">
+                {{ colorful_label(server.name) }}
+              </div>
+              <div class="col"></div>
+              <div class="col-auto align-self-start">
+              {% if server.online %}
+                <span class="badge bg-green-lt">online</span>
+              {% else %}
+                <span class="badge bg-gray-lt">offline</span>
+              {% endif %}
+              </div>
+            </div>
+
+            {{ progress_bar('CPU', server.cpu_percent) }}
+            {{ progress_bar('Memory', server.mem_percent) }}
+            {{ progress_bar('Network', server.net_percent) }}
+            {{ progress_bar('Disk', server.disk_percent) }}
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+
+  <script>
+      setInterval(function () {
+          function progress_update(card, label, percent) {
+              $('.' + label + ' > div > span.strong', card).html(percent + '%');
+              $('.' + label + ' > div > div.progress-bar', card).css('width', percent + '%').prop('aria-valuenow', percent);
+          }
+
+          $.ajax({
+              url: '{{ url_for('server.stats') }}',
+              dataType: 'json',
+              success: function (result) {
+                  $.each(result, function (index, server) {
+                      var card = $('#server-' + server.id + '-card');
+                      var online = $('div > div > span.badge', card);
+
+                      if (server.online) {
+                          online.prop('class', 'badge bg-green-lt').html('online');
+                      } else {
+                          online.prop('class', 'badge bg-gray-lt').html('offline');
+                      }
+
+                      progress_update(card, 'cpu', server.cpu_percent);
+                      progress_update(card, 'memory', server.mem_percent);
+                      progress_update(card, 'network', server.net_percent);
+                      progress_update(card, 'disk', server.disk_percent);
+                  });
+              }
+          })
+      }, 1000);
+  </script>
+
+  <div class="card">
+    <div class="card-body">
+      <h3 class="card-title">Connection Summary</h3>
+      <div class="embed-responsive embed-responsive-16by9">
+        <div class="embed-responsive-item">
+          <div id="connection-summary" class="w-100 h-100"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+      $('#connection-summary').vectorMap({
+          map: 'world_en',
+          backgroundColor: 'transparent',
+          color: 'rgba(120, 130, 140, .1)',
+          borderColor: 'transparent',
+          scaleColors: ["#d2e1f3", "#206bc4"],
+          normalizeFunction: 'polynomial',
+          values: (chart_data = {{ connections_country_code|safe }}),
+          onLabelShow: function (event, label, code) {
+              if (chart_data[code] > 0) {
+                  label.append(': <strong>' + chart_data[code] + '</strong>');
+              }
+          }
+      });
+  </script>
+{% endblock %}

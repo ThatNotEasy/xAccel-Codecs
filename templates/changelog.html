@@ -1,0 +1,10 @@
+{% extends "layout.html" %}
+{% from "bootstrap.html" import panel %}
+
+{% block title %}Changelog{% endblock %}
+
+{% block content %}
+  {% autoescape false %}
+    {{ changelog }}
+  {% endautoescape %}
+{% endblock %}
